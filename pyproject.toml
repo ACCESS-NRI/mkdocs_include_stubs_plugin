@@ -1,0 +1,52 @@
+[project]
+name = "mkdocs-include-configurations-plugin"
+dynamic = ["version"]
+authors = [
+  {name = "Davide Marchegiani", email="davide.marchegiani@anu.edu.au"},
+]
+description = "Mkdocs plugin to include configuration documentation for multiple branches within an ACCESS-NRI config repo."
+license = { file = "LICENSE" }
+keywords = ["mkdocs", "plugin", "mkdocs plugin", "access-nri"]
+requires-python = ">=3.10"
+dependencies = [
+    "mkdocs>=1.0",
+    "versioneer",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[project.urls]
+Repository = "https://github.com/ACCESS-NRI/mkdocs_include_configurations_plugin"
+
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = [
+    "setuptools>64",
+    "versioneer[toml]",
+]
+
+[project.entry-points."mkdocs.plugins"]
+include-configurations = "mkdocs_include_configurations_plugin.plugin:IncludeConfigurationsPlugin"
+
+[project.scripts]
+mkdocs = "mkdocs_include_configurations_plugin.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = false
+
+[tool.versioneer]
+VCS = "git"
+style = "pep440"
+versionfile_source = "src/mkdocs_include_configurations_plugin/_version.py"
+versionfile_build = "mkdocs_include_configurations_plugin/_version.py"
+tag_prefix = ""
+parentdir_prefix = "mkdocs-include-configurations-plugin-"
+
+[tool.pytest.ini_options]
+pythonpath = "src"
+addopts = "--cov=src --cov-report=term-missing"
