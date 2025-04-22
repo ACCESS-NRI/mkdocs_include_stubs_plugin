@@ -9,11 +9,12 @@ license = { file = "LICENSE" }
 keywords = ["mkdocs", "plugin", "mkdocs plugin", "access-nri"]
 requires-python = ">=3.10"
 dependencies = [
+    "GitPython>=3.1",
     "mkdocs>=1.0",
     "versioneer",
 ]
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "ipykernel>=6.0",
     "pytest>=8.0",
