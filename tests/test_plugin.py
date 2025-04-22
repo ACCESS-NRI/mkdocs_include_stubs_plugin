@@ -4,4 +4,4 @@
 
 import pytest
 
-from mkdocs_include_configurations import plugin
+from include_configurations import plugin
