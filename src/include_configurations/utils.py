@@ -1,11 +1,11 @@
 """
-Module for utility functions related to Git operations.
+Module for utility functions.
 """
 
 import os
 from git import Repo, InvalidGitRepositoryError
 
-def get_origin_url():
+def get_origin_url() -> str:
     """
     Get the URL of the origin remote for the current Git repository.
 
@@ -16,5 +16,5 @@ def get_origin_url():
         repo = Repo(search_parent_directories=True)
         return repo.remotes.origin.url
     except InvalidGitRepositoryError:
-        current_dir = os.getcwd()
-        raise InvalidGitRepositoryError("The current directory is not a Git repository.")
+        cwd = os.getcwd()
+        raise InvalidGitRepositoryError(f"'{cwd}' is not a Git repository.")

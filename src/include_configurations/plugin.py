@@ -3,24 +3,34 @@
 from mkdocs.config import Config
 from mkdocs.config import config_options as opt
 from mkdocs.plugins import BasePlugin
+from include_configurations.utils import get_origin_url
 
+DEFAULT_PATTERN_RELEASED = r"^release-.+"
+DEFAULT_PATTERN_DEVELOPMENT = r"^dev-.+"
 
 class ConfigScheme(Config):
     """Configuration for the plugin."""
     repo_url = opt.Type(
         str,
         default=None,
-        required=False,
-        help="The URL of the repository used to retrieve branches and tags for the \
-            configurations included in the MkDocs site. If not specified, the equivalent of \
-            the output of `git remote get-url origin` for the current Git repository will be used.",
+    )
+    pattern_released = opt.Type(
+        str,
+        default=DEFAULT_PATTERN_RELEASED,
+    )
+    pattern_development = opt.Type(
+        str,
+        default=DEFAULT_PATTERN_DEVELOPMENT,
     )
 
 
 class IncludeConfigurationsPlugin(BasePlugin[ConfigScheme]):
     def on_files(self, files, config):
         """Hook to modify the files."""
-        pass
+        repo_url = self.config.repo_url or get_origin_url()
+        # repo = Repo("/path/to/repo")
+
+        
 
     def on_nav(self, nav, config, files):
         """Hook to modify the navigation."""
