@@ -3,34 +3,40 @@
 from mkdocs.config import Config
 from mkdocs.config import config_options as opt
 from mkdocs.plugins import BasePlugin
-from include_configurations.utils import get_origin_url
 
-DEFAULT_PATTERN_RELEASED = r"^release-.+"
-DEFAULT_PATTERN_DEVELOPMENT = r"^dev-.+"
+DEFAULT_PATTERN_RELEASED = r"release-*"
+DEFAULT_PATTERN_DEVELOPMENT = r"dev-*"
+DEFAULT_DOCUMENTATION_DIR_PATH = 'documentation'
 
 class ConfigScheme(Config):
     """Configuration for the plugin."""
-    repo_url = opt.Type(
+    documentation_dir = opt.Type(
         str,
-        default=None,
-    )
-    pattern_released = opt.Type(
-        str,
-        default=DEFAULT_PATTERN_RELEASED,
+        default=DEFAULT_DOCUMENTATION_DIR_PATH,
     )
     pattern_development = opt.Type(
         str,
         default=DEFAULT_PATTERN_DEVELOPMENT,
     )
-
+    pattern_released = opt.Type(
+        str,
+        default=DEFAULT_PATTERN_RELEASED,
+    )
+    repo = opt.Type(
+        str,
+        default=None,
+    )
 
 class IncludeConfigurationsPlugin(BasePlugin[ConfigScheme]):
+    def __init__(self):
+        super().__init__()
+        self.repo_url = self.config.repo_url or '.'
+        self.pattern_released = self.config.pattern_released or DEFAULT_PATTERN_RELEASED
+        self.pattern_development = self.config.pattern_development or DEFAULT_PATTERN_DEVELOPMENT
+
     def on_files(self, files, config):
         """Hook to modify the files."""
-        repo_url = self.config.repo_url or get_origin_url()
-        # repo = Repo("/path/to/repo")
-
-        
+        # If no repo is provided, use the current directory
 
     def on_nav(self, nav, config, files):
         """Hook to modify the navigation."""

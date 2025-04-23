@@ -1,24 +1,201 @@
 """Tests for `mkdocs_include_configurations` package."""
 
+# fp is a fixture provided by pytest-subprocess.
+
+from unittest.mock import patch
+
 import pytest
-from include_configurations.utils import get_origin_url
-from unittest.mock import patch, MagicMock
-from git import InvalidGitRepositoryError
 
-def test_get_origin_url():
-    """Test the `get_origin_url` function."""
-    # Mock the Repo class
-    expected = "https://example/repo/url/.git"
-    mock_repo = MagicMock()
-    mock_repo.remotes.origin.url = expected
-    with patch("include_configurations.utils.Repo", return_value=mock_repo):
-        # Mock the Repo instance
-        result = get_origin_url()
-    assert result == expected
+from include_configurations.utils import (
+    ReleaseStatus,
+    check_is_installed,
+    get_git_refs,
+    has_config_doc,
+    get_repo,
+)
 
-@patch("include_configurations.utils.os.getcwd", return_value="/")
-def test_get_origin_url_invalid_repo(mock_getcwd):
-    """Test the `get_origin_url` function when the current directory is an invalid repo."""
-    with pytest.raises(InvalidGitRepositoryError):
-        get_origin_url()
 
+@pytest.fixture
+def mock_git_refs():
+    pass
+
+
+def test_check_is_installed_found():
+    """Test the check_is_installed function when it passes."""
+    exe = "random_example_executable"
+    with patch("include_configurations.utils.shutil.which", return_value=True):
+        check_is_installed(exe)
+
+
+def test_check_is_installed_not_found():
+    """Test the check_is_installed function when the executable is not found."""
+    exe = "random_example_executable"
+    with patch("shutil.which", return_value=False):
+        with pytest.raises(EnvironmentError) as excinfo:
+            check_is_installed(exe)
+            assert (
+                str(excinfo.value)
+                == f"'{exe}' is required but not found. Please install it and try again."
+            )
+
+
+@pytest.mark.parametrize(
+    "status, output_git_refs, expected_output",
+    [
+        (
+            ReleaseStatus.DEVELOPMENT,
+            "sha1\trefs/heads/main\nsha2\trefs/heads/dev\nsha3\trefs/heads/branch1",
+            [
+                "sha1",
+                "sha2",
+                "sha3",
+            ],
+        ),
+        (
+            ReleaseStatus.RELEASE,
+            "sha4\trefs/tags/v1\nsha5\trefs/tags/v2\nsha6\trefs/tags/v3",
+            [
+                "sha4",
+                "sha5",
+                "sha6",
+            ],
+        ),
+    ],
+    ids=["development", "release"],
+)
+def test_get_git_refs(fp, status, output_git_refs, expected_output):
+    """Test the get_git_refs function."""
+    refs_flag = "--heads" if status == ReleaseStatus.DEVELOPMENT else "--tags"
+    repo_url = "https://example.com/repo.git"
+    pattern = "random-pattern"
+    fp.register(
+        ["git", "ls-remote", refs_flag, repo_url, pattern], stdout=output_git_refs
+    )
+    result = get_git_refs(repo_url, pattern, status)
+    assert result == expected_output
+    assert ["git", "ls-remote", refs_flag, repo_url, pattern] in fp.calls
+
+
+@pytest.mark.parametrize(
+    "output_json, expected_result",
+    [
+        ("", False),
+        (
+            r"""{
+            "message": "Not Found",
+            "documentation_url": "https://docs.github.com/rest/repos/contents#get-repository-content",
+            "status": "404"
+            }""",
+            False,
+        ),
+        (
+            r"""[{
+            "name": "name_without_extensionmd"
+            }]""",
+            False,
+        ),
+        (
+            r"""[
+            {
+            "name": "name_without_extensionmd"
+            },
+            {
+            "name": "name_with_extension.md"
+            }
+            ]""",
+            False,
+        ),
+        (
+            r"""[{
+            "name": "name_wit_extension.md"
+            }]""",
+            True,
+        ),
+        (
+            r"""[{
+            "name": "name_wit_extension.html"
+            }]""",
+            True,
+        ),
+    ],
+    ids=[
+        "empty",
+        "not_found",
+        "no_extension",
+        "multiple_files",
+        "single_file_md",
+        "single_file_html",
+    ],
+)
+def test_has_config_doc(fp, output_json, expected_result):
+    """Test the has_config_doc function."""
+    ref = "sha1234567"
+    repo = "owner/repo"
+    path = "config/path"
+    url = f"https://api.github.com/repos/{repo}/contents/{path}?ref={ref}"
+    command = ["curl", "-s", url]
+    fp.register(command, stdout=output_json)
+    assert has_config_doc(ref, repo, path) is expected_result
+
+
+@pytest.mark.parametrize(
+    "config_input, expected_output, raises_error",
+    [
+        ("", None, True),  # input_empty
+        (
+            "https://github.com/OWNER/REPO",
+            "OWNER/REPO",
+            False,
+        ),  # valid_github_url
+        (
+            "git@github.com:example/name.git",
+            "example/name",
+            False,
+        ),  # valid_github_ssh_url
+        (
+            "owner-example/repo_name",
+            "owner-example/repo_name",
+            False,
+        ),  # valid_github_repo
+        (
+            "http://www.example.com/owner/repo",
+            None,
+            True,
+        ),  # invalid_url
+        (
+            "invalid_repo_name",
+            None,
+            True,
+        ),  # "invalid_repo"
+    ],
+    ids=[
+        "empty",
+        "valid_github_url",
+        "valid_github_ssh_url",
+        "valid_github_repo",
+        "invalid_url",
+        "invalid_repo",
+    ],
+)
+def test_get_repo(fp, config_input, expected_output, raises_error):
+    """Test the has_config_doc function."""
+    output = get_repo(config_input)
+    if not raises_error:
+        assert output == expected_output
+    else:
+        with pytest.raises(ValueError) as excinfo:
+            get_repo(config_input)
+            assert (
+                str(excinfo.value).startswith(f"Invalid GitHub repo: '{config_input}'")
+            )
+
+
+# def test_get_repo_input_none(fp):
+#     """Test the has_config_doc function."""
+#     ref = "sha1234567"
+#     repo = "owner/repo"
+#     path = "config/path"
+#     url = f"https://api.github.com/repos/{repo}/contents/{path}?ref={ref}"
+#     command = ["curl", "-s", url]
+#     fp.register(command, stdout=output_json)
+#     assert has_config_doc(ref, repo, path) is expected_result
