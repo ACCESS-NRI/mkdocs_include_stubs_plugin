@@ -2,12 +2,17 @@
 Module for utility functions.
 """
 
+import re
 import json
 import shutil
 import subprocess
 from enum import StrEnum, auto
 from typing import Union, Sequence
 from functools import partial
+
+GITHUB_URL = "https://github.com/"
+GITHUB_SSH = "git@github.com:"
+
 
 class ReleaseStatus(StrEnum):
     """
@@ -26,12 +31,23 @@ class SupportedFileFormats(StrEnum):
     MARKDOWN = ".md"
     HTML = ".html"
 
-run_command = partial(
-    subprocess.run, 
-    capture_output=True, 
-    text=True, 
-    check=True
-)
+
+run_command = partial(subprocess.run, capture_output=True, text=True, check=True)
+
+def get_command_output(command: Sequence[str]) -> str:
+    """
+    Run a command and return its output.
+
+    Args:
+        command: Sequence of Str
+            The command to run.
+
+    Returns:
+        Str
+            The output of the command.
+    """
+    result = run_command(command)
+    return result.stdout.strip()
 
 def check_is_installed(executable) -> None:
     """
@@ -66,9 +82,9 @@ def get_git_refs(repo_url: str, pattern: str, status: ReleaseStatus) -> list[str
     refs_flag = "--heads" if status == ReleaseStatus.DEVELOPMENT else "--tags"
     # Print all tags in the repository
     command = ["git", "ls-remote", refs_flag, repo_url, pattern]
-    result = run_command(command)
+    output = get_command_output(command)
     # Get first column of the output (git sha)
-    refs = result.stdout.strip().split()[::2]
+    refs = output.split()[::2]
     return refs
 
 
@@ -95,15 +111,17 @@ def has_config_doc(
             document file, False otherwise.
     """
     url = f"https://api.github.com/repos/{repo}/contents/{config_doc_path}?ref={ref}"
-    result = run_command(["curl", "-s", url])
+    command = ["curl", "-s", url]
+    output = get_command_output(command)
     try:
-        json_object = json.loads(result.stdout.strip())
+        json_object = json.loads(output)
     except json.JSONDecodeError:
         return False
     if len(json_object) != 1:
         return False
-    file_name = json_object[0].get("name","")
+    file_name = json_object[0].get("name", "")
     return file_name.endswith(tuple(fformat.value for fformat in SupportedFileFormats))
+
 
 def get_repo(repo_config_input: Union[str, None]) -> str:
     """
@@ -119,10 +137,28 @@ def get_repo(repo_config_input: Union[str, None]) -> str:
         Str
             The repository URL.
     """
-    if repo_config_input is None:
-        # Get the repository URL from the current directory
-        command = ["git", "remote", "get-url", "origin"]
-        result = run_command(command)
-        repo_config_input = result.stdout.strip()
-    # if repo.startswith("https://github.com/","git@github.com:"):
-    return 'bubbi'
+    try:
+        if repo_config_input is None:
+            command = ["git", "remote", "get-url", "origin"]
+            repo = get_command_output(command)
+        else:
+            repo = repo_config_input
+
+        # Extract the repository name from the URL
+        if repo.startswith(GITHUB_URL):
+            repo_owner_name = "/".join(repo.split("/")[3:5])
+        elif repo.startswith(GITHUB_SSH):
+            repo_owner_name = "/".join(
+                repo.split(":")[1].split("/")[0:2]
+            ).removesuffix(".git")
+        else:
+            repo_owner_name = repo
+        if not re.fullmatch(r"[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+", repo_owner_name):
+            raise ValueError
+    except (IndexError, ValueError):
+        raise ValueError(f"Invalid GitHub repo: '{repo}'")
+    except subprocess.CalledProcessError as e:
+        raise ValueError(
+            f"Failed to get the GitHub repository from local directory: {e.stderr.strip()}"
+        ) from e
+    return repo_owner_name

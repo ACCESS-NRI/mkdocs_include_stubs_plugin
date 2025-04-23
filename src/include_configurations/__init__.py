@@ -2,8 +2,7 @@ from . import _version
 from include_configurations.utils import check_is_installed
 
 REQUIRED_EXECS = [
-    "git",
-    "awk"
+    "git"
 ]
 
 for exe in REQUIRED_EXECS:
