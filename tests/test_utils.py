@@ -1,4 +1,4 @@
-"""Tests for `mkdocs_include_configurations` package."""
+"""Tests for `mkdocs_include_configuration_stubs` package."""
 
 # fp is a fixture provided by pytest-subprocess.
 
@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from include_configurations.utils import (
+from include_configuration_stubs.utils import (
     ReleaseStatus,
     get_command_output,
     check_is_installed,
@@ -31,7 +31,7 @@ def test_get_command_output(fp):
 def test_check_is_installed_found():
     """Test the check_is_installed function when it passes."""
     exe = "random_example_executable"
-    with patch("include_configurations.utils.shutil.which", return_value=True):
+    with patch("include_configuration_stubs.utils.shutil.which", return_value=True):
         check_is_installed(exe)
 
 

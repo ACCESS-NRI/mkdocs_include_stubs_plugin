@@ -1,4 +1,4 @@
-"""Tests for `mkdocs_include_configurations` package."""
+"""Tests for `plugin.py` module."""
 
 import pytest
-from include_configurations import plugin
+from include_configuration_stubs import plugin

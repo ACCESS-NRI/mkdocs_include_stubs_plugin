@@ -1,7 +1,3 @@
-* mkdocs_include_configurations version:
-* Python version:
-* Operating System:
-
 ### Description
 
 Describe what you were trying to get done.
