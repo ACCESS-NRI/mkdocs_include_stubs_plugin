@@ -72,12 +72,13 @@ def test_check_is_installed_not_found():
 def test_get_git_refs(fp, status, output_git_refs, expected_output):
     """Test the get_git_refs function."""
     refs_flag = "--heads" if status == ReleaseStatus.DEVELOPMENT else "--tags"
-    repo_url = "https://example.com/repo.git"
+    repo = "example/repo"
+    repo_url = f"https://github.com/{repo}"
     pattern = "random-pattern"
     fp.register(
         ["git", "ls-remote", refs_flag, repo_url, pattern], stdout=output_git_refs
     )
-    result = get_git_refs(repo_url, pattern, status)
+    result = get_git_refs(repo, pattern, status)
     assert result == expected_output
     assert ["git", "ls-remote", refs_flag, repo_url, pattern] in fp.calls
 

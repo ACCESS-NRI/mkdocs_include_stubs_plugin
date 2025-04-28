@@ -69,14 +69,14 @@ def check_is_installed(executable: str) -> None:
         )
 
 
-def get_git_refs(repo_url: str, pattern: str, status: ReleaseStatus) -> list[str]:
+def get_git_refs(repo: str, pattern: str, status: ReleaseStatus) -> list[str]:
     """
     Get refs from the repository, formatted according to the specified pattern
     and status.
 
     Args:
-        repo_url: Str
-            The URL of the repository.
+        repo: Str
+            The GitHub repository formatted as OWNER/REPO.
         pattern: Str
             The pattern to match the refs.
         status: ReleaseStatus
@@ -86,6 +86,7 @@ def get_git_refs(repo_url: str, pattern: str, status: ReleaseStatus) -> list[str
         List of Str
             The list of refs (git sha) that match the pattern for the specified repo.
     """
+    repo_url = f"https://github.com/{repo}"
     # Set which git refs to select based on the release status
     refs_flag = "--heads" if status == ReleaseStatus.DEVELOPMENT else "--tags"
     # Print all tags in the repository
