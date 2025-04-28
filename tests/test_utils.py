@@ -9,7 +9,7 @@ from include_configuration_stubs.utils import (
     get_command_output,
     check_is_installed,
     get_git_refs,
-    has_config_doc,
+    get_config_stub_name,
     get_repo,
 )
 
@@ -84,22 +84,22 @@ def test_get_git_refs(fp, status, output_git_refs, expected_output):
 
 
 @pytest.mark.parametrize(
-    "output_json, expected_result",
+    "output_json, expected_output",
     [
-        ("", False),
+        ("", None),
         (
             r"""{
             "message": "Not Found",
             "documentation_url": "https://docs.github.com/rest/repos/contents#get-repository-content",
             "status": "404"
             }""",
-            False,
+            None,
         ),
         (
             r"""[{
             "name": "name_without_extensionmd"
             }]""",
-            False,
+            None,
         ),
         (
             r"""[
@@ -110,19 +110,19 @@ def test_get_git_refs(fp, status, output_git_refs, expected_output):
             "name": "name_with_extension.md"
             }
             ]""",
-            False,
+            None,
         ),
         (
             r"""[{
-            "name": "name_wit_extension.md"
+            "name": "name_with_extension.md"
             }]""",
-            True,
+            "name_with_extension.md",
         ),
         (
             r"""[{
-            "name": "name_wit_extension.html"
+            "name": "name_with_extension.html"
             }]""",
-            True,
+            "name_with_extension.html",
         ),
     ],
     ids=[
@@ -134,15 +134,15 @@ def test_get_git_refs(fp, status, output_git_refs, expected_output):
         "single_file_html",
     ],
 )
-def test_has_config_doc(fp, output_json, expected_result):
-    """Test the has_config_doc function."""
+def test_get_config_stub_name(fp, output_json, expected_output):
+    """Test the get_config_stub_name function."""
     ref = "sha1234567"
     repo = "owner/repo"
     path = "config/path"
     url = f"https://api.github.com/repos/{repo}/contents/{path}?ref={ref}"
     command = ["curl", "-s", url]
     fp.register(command, stdout=output_json)
-    assert has_config_doc(ref, repo, path) is expected_result
+    assert get_config_stub_name(ref, repo, path) == expected_output
 
 
 @pytest.mark.parametrize(

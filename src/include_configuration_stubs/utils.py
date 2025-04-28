@@ -7,7 +7,7 @@ import json
 import shutil
 import subprocess
 from enum import StrEnum, auto
-from typing import Union, Sequence
+from typing import Sequence
 from functools import partial
 
 GITHUB_URL = "https://github.com/"
@@ -97,14 +97,14 @@ def get_git_refs(repo: str, pattern: str, status: ReleaseStatus) -> list[str]:
     return refs
 
 
-def has_config_doc(
+def get_config_stub_name(
     ref: str,
     repo: str,
     config_doc_path: str,
-) -> bool:
+) -> str | None:
     """
-    Check if the given git ref includes the specified config_doc_path,
-    and that the path contains exactly one file in a supported format.
+    If the given git ref includes the specified config_doc_path containing 
+    one file in a supported fortmat, return the name of the file inside.
 
     Args:
         ref: Str
@@ -115,9 +115,9 @@ def has_config_doc(
             Path to the directory expected to contain a single file in a supported format.
 
     Returns:
-        Bool
-            True if the path exists at the given ref and contains exactly one supported
-            document file, False otherwise.
+        str | None
+            If the path exists at the given ref and contains exactly one supported
+            document file, the name is returned. None is returned otherwise.
     """
     url = f"https://api.github.com/repos/{repo}/contents/{config_doc_path}?ref={ref}"
     command = ["curl", "-s", url]
@@ -125,14 +125,16 @@ def has_config_doc(
     try:
         json_object = json.loads(output)
     except json.JSONDecodeError:
-        return False
+        return None
     if len(json_object) != 1:
-        return False
+        return None
     file_name = json_object[0].get("name", "")
-    return file_name.endswith(tuple(fformat.value for fformat in SupportedFileFormats))
+    if not file_name.endswith(tuple(fformat.value for fformat in SupportedFileFormats)):
+        return None
+    return file_name
 
 
-def get_repo(repo_config_input: Union[str, None]) -> str:
+def get_repo(repo_config_input: str | None) -> str:
     """
     Get the repository in the format OWNER/REPO from the given repo_config_input.
     If the repo_config_input is None, get the repo from the output of the command
