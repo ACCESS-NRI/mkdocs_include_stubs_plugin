@@ -40,6 +40,11 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
 - `main_website_branch`
     _Git_ branch where the "main" website documentation resides.
     Default value is `main`.
+- `stubs_navigation_dir`
+    Path to the directory where the configuration stubs will be stored, relative to the `docs_dir`.
+    If the navigation (`nav` field in the `mkdoc.yaml` file) is defined, this will also be the parent 
+    of the configuration pages in the website navigation tree.
+    Default value is `Configurations`.
 
 ## Lincense
 Apache Software License 2.0

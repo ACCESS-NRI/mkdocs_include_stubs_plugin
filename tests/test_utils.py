@@ -1,5 +1,3 @@
-"""Tests for `mkdocs_include_configuration_stubs` package."""
-
 # fp is a fixture provided by pytest-subprocess.
 
 from unittest.mock import patch

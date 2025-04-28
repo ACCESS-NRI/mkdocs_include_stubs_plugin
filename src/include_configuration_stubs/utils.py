@@ -49,10 +49,18 @@ def get_command_output(command: Sequence[str]) -> str:
     result = run_command(command)
     return result.stdout.strip()
 
-def check_is_installed(executable) -> None:
+def check_is_installed(executable: str) -> None:
     """
     Check if a required executable is installed on the system.
     Raises an EnvironmentError if the executable is not found.
+
+    Args:
+        executable: Str
+            The executable to check.
+
+    Returns:
+        None
+            Raises an EnvironmentError if the executable is not found.
     """
     # Check if Git is installed
     if not shutil.which(executable):

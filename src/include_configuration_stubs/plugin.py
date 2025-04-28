@@ -1,45 +1,23 @@
 """Main plugin."""
 
-from mkdocs.config import Config
-from mkdocs.config import config_options as opt
 from mkdocs.plugins import BasePlugin
-
-DEFAULT_PATTERN_RELEASED = r"release-*"
-DEFAULT_PATTERN_DEVELOPMENT = r"dev-*"
-DEFAULT_DOCUMENTATION_DIR_PATH = 'documentation'
-
-class ConfigScheme(Config):
-    """Configuration for the plugin."""
-    documentation_dir = opt.Type(
-        str,
-        default=DEFAULT_DOCUMENTATION_DIR_PATH,
-    )
-    pattern_development = opt.Type(
-        str,
-        default=DEFAULT_PATTERN_DEVELOPMENT,
-    )
-    pattern_released = opt.Type(
-        str,
-        default=DEFAULT_PATTERN_RELEASED,
-    )
-    repo = opt.Type(
-        str,
-        default=None,
-    )
-    main_website_branch = opt.Type(
-        str,
-        default='main',
-    )
+from include_configuration_stubs.config import ConfigScheme, check_empty_input
 
 class IncludeConfigurationsPlugin(BasePlugin[ConfigScheme]):
-    def __init__(self):
-        super().__init__()
-        self.pattern_released = self.config.pattern_released or DEFAULT_PATTERN_RELEASED
-        self.pattern_development = self.config.pattern_development or DEFAULT_PATTERN_DEVELOPMENT
+    def on_config(self, config):
+        # Check that inputs are not empty
+        for key in (
+            "stubs_dir",
+            "repo",
+            "main_website_branch",
+            "stubs_navigation_dir",
+        ):
+            check_empty_input(getattr(config, key), key)
 
     def on_files(self, files, config):
         """Hook to modify the files."""
-        # Check This is where you can modify the files before they are processed
+        # Add the stubs for the released configurations to the site
+        
         # For example, you can add or remove files from the list
         # files.append('new_file.md')
         # files.remove('old_file.md')
