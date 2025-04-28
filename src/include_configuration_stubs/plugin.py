@@ -10,13 +10,13 @@ class IncludeConfigurationsPlugin(BasePlugin[ConfigScheme]):
             "stubs_dir",
             "repo",
             "main_website_branch",
-            "stubs_navigation_dir",
+            "stubs_website_dir",
         ):
             check_empty_input(getattr(config, key), key)
 
     def on_files(self, files, config):
         """Hook to modify the files."""
-        # Add the stubs for the released configurations to the site
+        # Add the stubs for the configurations to the site
         
         # For example, you can add or remove files from the list
         # files.append('new_file.md')

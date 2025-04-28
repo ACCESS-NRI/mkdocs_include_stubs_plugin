@@ -5,7 +5,7 @@ DEFAULT_PATTERN_RELEASED = r"release-*"
 DEFAULT_PATTERN_DEVELOPMENT = r"dev-*"
 DEFAULT_STUBS_DIR_PATH = 'documentation'
 DEFAULT_MAIN_WEBSITE_BRANCH = 'main'
-DEFAULT_STUBS_NAVIGATION_DIR_PATH = 'Configurations'
+DEFAULT_STUBS_WEBSITE_DIR_PATH = 'Configurations'
 
 class ConfigScheme(Config):
     """Configuration for the plugin."""
@@ -29,9 +29,9 @@ class ConfigScheme(Config):
         str,
         default=DEFAULT_MAIN_WEBSITE_BRANCH,
     )
-    stubs_navigation_dir = opt.Type(
+    stubs_website_dir = opt.Type(
         str,
-        default=DEFAULT_STUBS_NAVIGATION_DIR_PATH,
+        default=DEFAULT_STUBS_WEBSITE_DIR_PATH,
     )
 
 def check_empty_input(input_value: str, input_name: str) -> None:
