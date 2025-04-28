@@ -11,6 +11,7 @@ from include_configuration_stubs.utils import (
     get_git_refs,
     get_config_stub,
     get_repo,
+    get_supported_file_formats,
 )
 
 
@@ -84,7 +85,7 @@ def test_get_git_refs(fp, status, output_git_refs, expected_output):
 
 
 @pytest.mark.parametrize(
-    "output_json, expected_output",
+    "output_json, expected_file_name",
     [
         ("", None),
         (
@@ -134,15 +135,20 @@ def test_get_git_refs(fp, status, output_git_refs, expected_output):
         "single_file_html",
     ],
 )
-def test_get_config_stub(fp, output_json, expected_output):
+def test_get_config_stub(fp, output_json, expected_file_name):
     """Test the get_config_stub function."""
+    example_file_content = "Example file content" if expected_file_name else None
     ref = "sha1234567"
     repo = "owner/repo"
     path = "config/path"
     supported_file_formats = (".md", ".html")
     url = f"https://api.github.com/repos/{repo}/contents/{path}?ref={ref}"
-    command = ["curl", "-s", url]
-    fp.register(command, stdout=output_json)
+    raw_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{path}/{expected_file_name}"
+    command1 = ["curl", "-s", url]
+    command2 = ["curl", "-s", raw_url]
+    fp.register(command1, stdout=output_json)
+    fp.register(command2, stdout=example_file_content)
+    expected_output = {expected_file_name: example_file_content} if expected_file_name else None
     assert get_config_stub(ref, repo, path, supported_file_formats) == expected_output
 
 
@@ -246,3 +252,9 @@ def test_get_repo_input_none(fp, command_stdout, expected_output, exit_code, rai
         output = get_repo(config_input)
         assert output == expected_output
         assert command in fp.calls
+
+def test_get_supported_file_formats():
+    """Test the get_supported_file_formats function."""
+    input_formats = "format1,format2,.weird for'\"mat"
+    expected_output = (".format1",".format2","..weird for'\"mat")
+    assert get_supported_file_formats(input_formats) == expected_output

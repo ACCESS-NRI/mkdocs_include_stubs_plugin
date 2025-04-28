@@ -74,7 +74,7 @@ def get_supported_file_formats(file_formats: str) -> tuple[str, ...]:
         Tuple of Str
             A tuple of supported file formats.
     """
-    return tuple(f".{format}" for fformat in file_formats.split(","))
+    return tuple(f".{fformat}" for fformat in file_formats.split(","))
 
 
 def get_git_refs(repo: str, pattern: str, status: ReleaseStatus) -> list[str]:
@@ -131,8 +131,6 @@ def get_config_stub(
             document file, a dictionary in the format {<file_name>: <file_content>} is returned.
             None is returned otherwise.
     """
-    # https://api.github.com/repos
-    # raw_file_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{stub_dir}/test1.md
     url = f"https://api.github.com/repos/{repo}/contents/{stub_dir}?ref={ref}"
     command = ["curl", "-s", url]
     output = get_command_output(command)
@@ -145,7 +143,10 @@ def get_config_stub(
     file_name = json_object[0].get("name", "")
     if not file_name.endswith(supported_file_formats):
         return None
-    return file_name
+    raw_file_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{stub_dir}/{file_name}"
+    command = ["curl", "-s", raw_file_url]
+    content = get_command_output(command)
+    return {file_name: content}
 
 
 def get_repo(repo_config_input: str | None) -> str:
