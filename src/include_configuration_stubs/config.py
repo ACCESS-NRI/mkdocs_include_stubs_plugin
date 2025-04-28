@@ -6,6 +6,7 @@ DEFAULT_PATTERN_DEVELOPMENT = r"dev-*"
 DEFAULT_STUBS_DIR_PATH = 'documentation'
 DEFAULT_MAIN_WEBSITE_BRANCH = 'main'
 DEFAULT_STUBS_WEBSITE_DIR_PATH = 'Configurations'
+DEFAULT_SUPPORTED_FILE_FORMATS = 'md,html'
 
 class ConfigScheme(Config):
     """Configuration for the plugin."""
@@ -32,6 +33,10 @@ class ConfigScheme(Config):
     stubs_website_dir = opt.Type(
         str,
         default=DEFAULT_STUBS_WEBSITE_DIR_PATH,
+    )
+    supported_file_formats = opt.Type(
+        str,
+        default=DEFAULT_SUPPORTED_FILE_FORMATS,
     )
 
 def check_empty_input(input_value: str, input_name: str) -> None:

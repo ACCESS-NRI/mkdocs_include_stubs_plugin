@@ -9,7 +9,7 @@ from include_configuration_stubs.utils import (
     get_command_output,
     check_is_installed,
     get_git_refs,
-    get_config_stub_name,
+    get_config_stub,
     get_repo,
 )
 
@@ -134,15 +134,16 @@ def test_get_git_refs(fp, status, output_git_refs, expected_output):
         "single_file_html",
     ],
 )
-def test_get_config_stub_name(fp, output_json, expected_output):
-    """Test the get_config_stub_name function."""
+def test_get_config_stub(fp, output_json, expected_output):
+    """Test the get_config_stub function."""
     ref = "sha1234567"
     repo = "owner/repo"
     path = "config/path"
+    supported_file_formats = (".md", ".html")
     url = f"https://api.github.com/repos/{repo}/contents/{path}?ref={ref}"
     command = ["curl", "-s", url]
     fp.register(command, stdout=output_json)
-    assert get_config_stub_name(ref, repo, path) == expected_output
+    assert get_config_stub(ref, repo, path, supported_file_formats) == expected_output
 
 
 @pytest.mark.parametrize(

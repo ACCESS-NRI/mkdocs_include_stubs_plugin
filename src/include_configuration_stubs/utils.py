@@ -2,13 +2,13 @@
 Module for utility functions.
 """
 
-import re
 import json
+import re
 import shutil
 import subprocess
 from enum import StrEnum, auto
-from typing import Sequence
 from functools import partial
+from typing import Sequence
 
 GITHUB_URL = "https://github.com/"
 GITHUB_SSH = "git@github.com:"
@@ -23,16 +23,8 @@ class ReleaseStatus(StrEnum):
     RELEASE = auto()
 
 
-class SupportedFileFormats(StrEnum):
-    """
-    Enum for the supported file formats.
-    """
-
-    MARKDOWN = ".md"
-    HTML = ".html"
-
-
 run_command = partial(subprocess.run, capture_output=True, text=True, check=True)
+
 
 def get_command_output(command: Sequence[str]) -> str:
     """
@@ -48,6 +40,7 @@ def get_command_output(command: Sequence[str]) -> str:
     """
     result = run_command(command)
     return result.stdout.strip()
+
 
 def check_is_installed(executable: str) -> None:
     """
@@ -67,6 +60,21 @@ def check_is_installed(executable: str) -> None:
         raise EnvironmentError(
             f"'{executable}' is required but not found. Please install it and try again."
         )
+
+
+def get_supported_file_formats(file_formats: str) -> tuple[str, ...]:
+    """
+    Get the supported file formats from the given string.
+
+    Args:
+        file_formats: Str
+            The string containing the supported file formats.
+
+    Returns:
+        Tuple of Str
+            A tuple of supported file formats.
+    """
+    return tuple(f".{format}" for fformat in file_formats.split(","))
 
 
 def get_git_refs(repo: str, pattern: str, status: ReleaseStatus) -> list[str]:
@@ -97,29 +105,35 @@ def get_git_refs(repo: str, pattern: str, status: ReleaseStatus) -> list[str]:
     return refs
 
 
-def get_config_stub_name(
+def get_config_stub(
     ref: str,
     repo: str,
-    config_doc_path: str,
-) -> str | None:
+    stub_dir: str,
+    supported_file_formats: tuple[str, ...],
+) -> dict[str, str] | None:
     """
-    If the given git ref includes the specified config_doc_path containing 
-    one file in a supported fortmat, return the name of the file inside.
+    If the given git ref includes the specified stub_dir containing
+    one file in a supported fortmat, return a dictionary with the name and content of the file.
 
     Args:
         ref: Str
             The git SHA.
         repo: Str
             The GitHub Repository in the format OWNER/REPO.
-        config_doc_path: Str
+        stub_dir: Str
             Path to the directory expected to contain a single file in a supported format.
+        supported_file_formats: Tuple of Str
+            Tuple of supported file formats.
 
     Returns:
-        str | None
+        Dict | None
             If the path exists at the given ref and contains exactly one supported
-            document file, the name is returned. None is returned otherwise.
+            document file, a dictionary in the format {<file_name>: <file_content>} is returned.
+            None is returned otherwise.
     """
-    url = f"https://api.github.com/repos/{repo}/contents/{config_doc_path}?ref={ref}"
+    # https://api.github.com/repos
+    # raw_file_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{stub_dir}/test1.md
+    url = f"https://api.github.com/repos/{repo}/contents/{stub_dir}?ref={ref}"
     command = ["curl", "-s", url]
     output = get_command_output(command)
     try:
@@ -129,7 +143,7 @@ def get_config_stub_name(
     if len(json_object) != 1:
         return None
     file_name = json_object[0].get("name", "")
-    if not file_name.endswith(tuple(fformat.value for fformat in SupportedFileFormats)):
+    if not file_name.endswith(supported_file_formats):
         return None
     return file_name
 
@@ -159,9 +173,9 @@ def get_repo(repo_config_input: str | None) -> str:
         if repo.startswith(GITHUB_URL):
             repo_owner_name = "/".join(repo.split("/")[3:5])
         elif repo.startswith(GITHUB_SSH):
-            repo_owner_name = "/".join(
-                repo.split(":")[1].split("/")[0:2]
-            ).removesuffix(".git")
+            repo_owner_name = "/".join(repo.split(":")[1].split("/")[0:2]).removesuffix(
+                ".git"
+            )
         else:
             repo_owner_name = repo
         if not re.fullmatch(r"[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+", repo_owner_name):
