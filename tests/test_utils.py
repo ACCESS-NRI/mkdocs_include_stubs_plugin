@@ -1,23 +1,28 @@
 # fp is a fixture provided by pytest-subprocess.
 
+from subprocess import CalledProcessError
 from unittest.mock import patch
 
 import pytest
 
+from include_configuration_stubs.config import GitRefType
 from include_configuration_stubs.utils import (
-    ReleaseStatus,
-    get_command_output,
     check_is_installed,
-    get_git_refs,
+    get_command_output,
     get_config_stub,
-    get_repo,
+    get_git_refs,
+    get_remote_repo,
+    get_repo_from_input,
+    get_repo_from_url,
     get_supported_file_formats,
+    is_main_website,
 )
 
 
 @pytest.fixture
 def mock_git_refs():
     pass
+
 
 def test_get_command_output(fp):
     """Test the get_command_output function."""
@@ -26,6 +31,7 @@ def test_get_command_output(fp):
     result = get_command_output(command)
     assert result == "Hello, World!"
     assert command in fp.calls
+
 
 def test_check_is_installed_found():
     """Test the check_is_installed function when it passes."""
@@ -47,39 +53,34 @@ def test_check_is_installed_not_found():
 
 
 @pytest.mark.parametrize(
-    "status, output_git_refs, expected_output",
+    "ref_type",
     [
-        (
-            ReleaseStatus.DEVELOPMENT,
-            "sha1\trefs/heads/main\nsha2\trefs/heads/dev\nsha3\trefs/heads/branch1",
-            [
-                "sha1",
-                "sha2",
-                "sha3",
-            ],
-        ), # development
-        (
-            ReleaseStatus.RELEASE,
-            "sha4\trefs/tags/v1\nsha5\trefs/tags/v2\nsha6\trefs/tags/v3",
-            [
-                "sha4",
-                "sha5",
-                "sha6",
-            ],
-        ), # release
+        GitRefType.BRANCH,  # ref_type_branch
+        GitRefType.TAG,  # ref_type_tag
+        GitRefType.ALL,  # ref_type_all
     ],
-    ids=["development", "release"],
+    ids=["ref_type_branch", "ref_type_tag", "ref_type_all"],
 )
-def test_get_git_refs(fp, status, output_git_refs, expected_output):
+def test_get_git_refs(fp, ref_type):
     """Test the get_git_refs function."""
-    refs_flag = "--heads" if status == ReleaseStatus.DEVELOPMENT else "--tags"
+    if ref_type == GitRefType.BRANCH:
+        refs_flag = "--heads"
+    elif ref_type == GitRefType.TAG:
+        refs_flag = "--tags"
+    elif ref_type == GitRefType.ALL:
+        refs_flag = "--heads --tags"
     repo = "example/repo"
     repo_url = f"https://github.com/{repo}"
     pattern = "random-pattern"
-    fp.register(
-        ["git", "ls-remote", refs_flag, repo_url, pattern], stdout=output_git_refs
+    command_output = (
+        "sha1\trefs/heads/main\nsha2\trefs/heads/dev\nsha3\trefs/heads/branch1"
     )
-    result = get_git_refs(repo, pattern, status)
+    expected_output = ["sha1", "sha2", "sha3"]
+    fp.register(
+        ["git", "ls-remote", refs_flag, repo_url, pattern],
+        stdout=command_output,
+    )
+    result = get_git_refs(repo, pattern, ref_type)
     assert result == expected_output
     assert ["git", "ls-remote", refs_flag, repo_url, pattern] in fp.calls
 
@@ -143,118 +144,308 @@ def test_get_config_stub(fp, output_json, expected_file_name):
     path = "config/path"
     supported_file_formats = (".md", ".html")
     url = f"https://api.github.com/repos/{repo}/contents/{path}?ref={ref}"
-    raw_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{path}/{expected_file_name}"
+    raw_url = (
+        f"https://raw.githubusercontent.com/{repo}/{ref}/{path}/{expected_file_name}"
+    )
     command1 = ["curl", "-s", url]
     command2 = ["curl", "-s", raw_url]
     fp.register(command1, stdout=output_json)
     fp.register(command2, stdout=example_file_content)
-    expected_output = {expected_file_name: example_file_content} if expected_file_name else None
+    expected_output = (
+        {expected_file_name: example_file_content} if expected_file_name else None
+    )
     assert get_config_stub(ref, repo, path, supported_file_formats) == expected_output
 
 
 @pytest.mark.parametrize(
-    "config_input, expected_output, raises_error",
+    "input_formats, expected_output",
     [
-        ("", None, True),  # input_empty
+        (["extension"], ("extension",)),  # single_item_list
+        (
+            [".md", ".html"],
+            (
+                ".md",
+                ".html",
+            ),
+        ),  # multiple_items_list
+        (".string", (".string",)),  # string
+    ],
+    ids=[
+        "single_item_list",
+        "multiple_items_list",
+        "string",
+    ],
+)
+def test_get_supported_file_formats(input_formats, expected_output):
+    """Test the get_supported_file_formats function."""
+    assert get_supported_file_formats(input_formats) == expected_output
+
+
+def test_get_remote_repo(fp):
+    """
+    Test the get_remote_repo function.
+    """
+    mock_stdout = "mock_output"
+    command = ["git", "remote", "get-url", "origin"]
+    fp.register(command, stdout=mock_stdout)
+    output = get_remote_repo()
+    assert output == mock_stdout
+    assert command in fp.calls
+
+
+@pytest.mark.parametrize(
+    "repo_url, expected_output, raises_error",
+    [
+        (
+            "https://github.com/ACCESS-NRI/access-hive.org.au/other/parts",
+            "ACCESS-NRI/access-hive.org.au",
+            False,
+        ),  # valid_github_url
+        (
+            "git@github.com:ACCESS-NRI/access-hive.org.au.git/other:parts/",
+            "ACCESS-NRI/access-hive.org.au",
+            False,
+        ),  # valid_github_ssh
+        ("invalid/repo", None, True),  # invalid
+    ],
+    ids=[
+        "valid_github_url",
+        "valid_github_ssh",
+        "invalid",
+    ],
+)
+def test_get_repo_from_url(repo_url, expected_output, raises_error):
+    """
+    Test the get_repo_from_url function.
+    """
+    if raises_error:
+        with pytest.raises(ValueError) as excinfo:
+            get_repo_from_url(repo_url)
+            # assert str(excinfo.value) == "Invalid GitHub repo URL: '{repo_url}'"
+    else:
+        output = get_repo_from_url(repo_url)
+        assert output == expected_output
+
+
+@pytest.mark.parametrize(
+    "config_input, get_repo_from_url_output",
+    [
         (
             "https://github.com/OWNER/REPO/contents",
             "OWNER/REPO",
-            False,
         ),  # valid_github_url
         (
             "git@github.com:example/name.git/other_part:example",
             "example/name",
-            False,
         ),  # valid_github_ssh_url
-        (
-            "owner-example/repo_name",
-            "owner-example/repo_name",
-            False,
-        ),  # valid_github_repo
-        (
-            "http://www.example.com/owner/repo",
-            None,
-            True,
-        ),  # invalid_url
-        (
-            "invalid_repo_name",
-            None,
-            True,
-        ),  # "invalid_repo"
-        (
-            "invalid/repo/name",
-            None,
-            True,
-        ),  # "invalid_repo2"
     ],
     ids=[
-        "empty",
         "valid_github_url",
         "valid_github_ssh_url",
-        "valid_github_repo",
-        "invalid_url",
-        "invalid_repo",
-        "invalid_repo2",
     ],
 )
-def test_get_repo(fp, config_input, expected_output, raises_error):
-    """Test the get_repo function."""
-    if not raises_error:
-        output = get_repo(config_input)
-        assert output == expected_output
-    else:
-        with pytest.raises(ValueError) as excinfo:
-            get_repo(config_input)
-            assert (
-                str(excinfo.value).startswith(f"Invalid GitHub repo: '{config_input}'")
-            )
+def test_get_repo_from_input_url_input(config_input, get_repo_from_url_output):
+    """Test the get_repo_from_input function."""
+    with (
+        patch(
+            "include_configuration_stubs.utils.get_remote_repo"
+        ) as mock_get_remote_repo,
+        patch(
+            "include_configuration_stubs.utils.get_repo_from_url",
+            return_value=get_repo_from_url_output,
+        ) as mock_get_repo_from_url,
+    ):
+        output = get_repo_from_input(config_input)
+        assert output == get_repo_from_url_output
+        mock_get_remote_repo.assert_not_called()
+        mock_get_repo_from_url.assert_called_with(config_input)
+
+
+def test_get_repo_from_input_repo_input():
+    """
+    Test the get_repo_from_input function when the input is in the 'OWNER/REPO' format.
+    """
+    config_input = "owner-example/repo_name"
+    with (
+        patch(
+            "include_configuration_stubs.utils.get_remote_repo"
+        ) as mock_get_remote_repo,
+        patch(
+            "include_configuration_stubs.utils.get_repo_from_url"
+        ) as mock_get_repo_from_url,
+    ):
+        output = get_repo_from_input(config_input)
+        assert output == config_input
+        mock_get_remote_repo.assert_not_called()
+        mock_get_repo_from_url.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    "command_stdout, expected_output, exit_code, raises_error",
-    [
-        (None, None, 1, True),  # error
-        (
-            "https://github.com/OWNER/REPO/example.md",
-            "OWNER/REPO",
-            0, 
-            False,
-        ),  # valid_github_url
-        (
-            "git@github.com:example/name.git/other_part:example", 
-            "example/name",
-            0, 
-            False,
-        ),  # valid_github_ssh_url
-        (
-            "https://gitlab.com/gitlab-org/gitlab",
-            None,
-            None,
-            True,
-        ) # not_github_url
-    ],
+    "config_input",
+    ["www.example.com/owner/repo", "invalid_repo_name", "invalid/repo/name"],
     ids=[
-        "error",
-        "valid_github_url",
-        "valid_github_ssh_url",
-        "not_github_url",
+        "not_a_github_url",
+        "no_slash",
+        "multiple_slashes",
     ],
 )
-def test_get_repo_input_none(fp, command_stdout, expected_output, exit_code, raises_error):
-    """Test the get_repo function when input is None."""
-    config_input = None
-    command = ["git", "remote", "get-url", "origin"]
-    fp.register(command, stdout=command_stdout, returncode=exit_code)
-    if raises_error:
-        with pytest.raises(ValueError):
-            get_repo(config_input)
-    else:
-        output = get_repo(config_input)
-        assert output == expected_output
-        assert command in fp.calls
+def test_get_repo_from_input_repo_input_invalid(config_input):
+    """
+    Test the get_repo_from_input function when the input is invalid.
+    """
+    with (
+        patch(
+            "include_configuration_stubs.utils.get_remote_repo"
+        ) as mock_get_remote_repo,
+        patch(
+            "include_configuration_stubs.utils.get_repo_from_url"
+        ) as mock_get_repo_from_url,
+        pytest.raises(ValueError) as excinfo,
+    ):
+        get_repo_from_input(config_input)
+        assert str(excinfo.value) == f"Invalid GitHub repo: '{config_input}'"
+        mock_get_remote_repo.assert_not_called()
+        mock_get_repo_from_url.assert_not_called()
 
-def test_get_supported_file_formats():
-    """Test the get_supported_file_formats function."""
-    input_formats = "format1,format2,.weird for'\"mat"
-    expected_output = (".format1",".format2","..weird for'\"mat")
-    assert get_supported_file_formats(input_formats) == expected_output
+
+def test_get_repo_from_input_none_input():
+    """
+    Test the get_repo_from_input function when the input is None.
+    """
+    config_input = None
+    get_remote_repo_output = "https://github.com/example/repo"
+    get_repo_from_url_output = "example/repo"
+    with (
+        patch(
+            "include_configuration_stubs.utils.get_remote_repo",
+            return_value=get_remote_repo_output,
+        ) as mock_get_remote_repo,
+        patch(
+            "include_configuration_stubs.utils.get_repo_from_url",
+            return_value=get_repo_from_url_output,
+        ) as mock_get_repo_from_url,
+    ):
+        output = get_repo_from_input(config_input)
+        assert output == get_repo_from_url_output
+        mock_get_remote_repo.assert_called()
+        mock_get_repo_from_url.assert_called_with(get_remote_repo_output)
+
+
+def test_get_repo_from_input_none_input_error():
+    """
+    Test the get_repo_from_input function when the input is None.
+    """
+    config_input = None
+    with (
+        patch(
+            "include_configuration_stubs.utils.get_remote_repo",
+            side_effect=CalledProcessError(
+                returncode=1, cmd="example", stderr="example_error"
+            ),
+        ) as mock_get_remote_repo,
+        patch(
+            "include_configuration_stubs.utils.get_repo_from_url"
+        ) as mock_get_repo_from_url,
+        pytest.raises(ValueError) as excinfo,
+    ):
+        get_repo_from_input(config_input)
+        assert str(excinfo.value).startswith(
+            "Failed to get the GitHub repository from local directory:"
+        )
+        mock_get_remote_repo.assert_called()
+        mock_get_repo_from_url.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "main_branch_config_input, repo, command_output, get_repo_from_url_output, expected_output",
+    [
+        ("main", "example/repo", "main", "example/repo", True),  # true
+        ("main", "example/repo", "not_main", "example/repo", False),  # not_main_branch
+        (
+            "main",
+            "example/repo",
+            "not_main",
+            "example/different_repo",
+            False,
+        ),  # not_main_repo
+    ],
+    ids=[
+        "true",
+        "not_main_branch",
+        "not_main_repo",
+    ],
+)
+def test_is_main_website(
+    fp,
+    main_branch_config_input,
+    repo,
+    command_output,
+    get_repo_from_url_output,
+    expected_output,
+):
+    """
+    Test the is_main_website function.
+    """
+    command = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
+    fp.register(command, stdout=command_output)
+    with (
+        patch(
+            "include_configuration_stubs.utils.get_remote_repo",
+            return_value=get_repo_from_url_output,
+        ) as mock_get_remote_repo,
+        patch(
+            "include_configuration_stubs.utils.get_repo_from_url",
+            return_value=repo,
+        ) as mock_get_repo_from_url,
+    ):
+        output = is_main_website(main_branch_config_input, repo)
+        assert output is expected_output
+        mock_get_remote_repo.assert_called()
+        mock_get_repo_from_url.assert_called()
+
+
+def test_is_main_website_get_remote_repo_exception(fp):
+    """
+    Test the is_main_website function when the get_remote_repo raises an exception.
+    """
+    main_branch_config_input = "test"
+    repo = "another_example/name"
+    command = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
+    fp.register(command, stdout="example_command_output")
+    with (
+        patch(
+            "include_configuration_stubs.utils.get_remote_repo",
+            side_effect=CalledProcessError(
+                returncode=1, cmd="example", stderr="example_error"
+            ),
+        ) as mock_get_remote_repo,
+        patch(
+            "include_configuration_stubs.utils.get_repo_from_url",
+        ) as mock_get_repo_from_url,
+    ):
+        output = is_main_website(main_branch_config_input, repo)
+        assert output is False
+        mock_get_remote_repo.assert_called()
+        mock_get_repo_from_url.assert_not_called()
+
+
+def test_is_main_website_command_exception(fp):
+    """
+    Test the is_main_website function when the 'git rev-parse --abbrev-ref HEAD' command raises an exception.
+    """
+    main_branch_config_input = "test"
+    repo = "another_example/name"
+    command = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
+    fp.register(command, stdout="example_command_output", returncode=1)
+    with (
+        patch(
+            "include_configuration_stubs.utils.get_remote_repo",
+        ) as mock_get_remote_repo,
+        patch(
+            "include_configuration_stubs.utils.get_repo_from_url",
+        ) as mock_get_repo_from_url,
+    ):
+        output = is_main_website(main_branch_config_input, repo)
+        assert output is False
+        mock_get_remote_repo.assert_called()
+        mock_get_repo_from_url.assert_not_called()

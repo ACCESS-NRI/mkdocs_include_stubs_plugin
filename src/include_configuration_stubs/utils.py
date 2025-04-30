@@ -6,21 +6,13 @@ import json
 import re
 import shutil
 import subprocess
-from enum import StrEnum, auto
 from functools import partial
 from typing import Sequence
 
+from include_configuration_stubs.config import GitRefType, NonEmptyStr
+
 GITHUB_URL = "https://github.com/"
 GITHUB_SSH = "git@github.com:"
-
-
-class ReleaseStatus(StrEnum):
-    """
-    Enum for release status.
-    """
-
-    DEVELOPMENT = auto()
-    RELEASE = auto()
 
 
 run_command = partial(subprocess.run, capture_output=True, text=True, check=True)
@@ -62,7 +54,7 @@ def check_is_installed(executable: str) -> None:
         )
 
 
-def get_supported_file_formats(file_formats: str) -> tuple[str, ...]:
+def get_supported_file_formats(file_formats: str | list) -> tuple[str, ...]:
     """
     Get the supported file formats from the given string.
 
@@ -74,21 +66,23 @@ def get_supported_file_formats(file_formats: str) -> tuple[str, ...]:
         Tuple of Str
             A tuple of supported file formats.
     """
-    return tuple(f".{fformat}" for fformat in file_formats.split(","))
+    if isinstance(file_formats, str):
+        file_formats = [file_formats]
+    return tuple(file_formats)
 
 
-def get_git_refs(repo: str, pattern: str, status: ReleaseStatus) -> list[str]:
+def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[str]:
     """
-    Get refs from the repository, formatted according to the specified pattern
-    and status.
+    Retrieve Git references of the specified type from the given repository,
+    filtering them according to the provided pattern.
 
     Args:
         repo: Str
             The GitHub repository formatted as OWNER/REPO.
         pattern: Str
             The pattern to match the refs.
-        status: ReleaseStatus
-            The release status (DEVELOPMENT or RELEASE).
+        ref_type: GitRefType
+            The Git ref type.
 
     Returns:
         List of Str
@@ -96,7 +90,12 @@ def get_git_refs(repo: str, pattern: str, status: ReleaseStatus) -> list[str]:
     """
     repo_url = f"https://github.com/{repo}"
     # Set which git refs to select based on the release status
-    refs_flag = "--heads" if status == ReleaseStatus.DEVELOPMENT else "--tags"
+    if ref_type == GitRefType.BRANCH:
+        refs_flag = "--heads"
+    elif ref_type == GitRefType.TAG:
+        refs_flag = "--tags"
+    else:
+        refs_flag = "--heads --tags"
     # Print all tags in the repository
     command = ["git", "ls-remote", refs_flag, repo_url, pattern]
     output = get_command_output(command)
@@ -143,48 +142,92 @@ def get_config_stub(
     file_name = json_object[0].get("name", "")
     if not file_name.endswith(supported_file_formats):
         return None
-    raw_file_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{stub_dir}/{file_name}"
+    raw_file_url = (
+        f"https://raw.githubusercontent.com/{repo}/{ref}/{stub_dir}/{file_name}"
+    )
     command = ["curl", "-s", raw_file_url]
     content = get_command_output(command)
     return {file_name: content}
 
 
-def get_repo(repo_config_input: str | None) -> str:
+def get_remote_repo() -> str:
     """
-    Get the repository in the format OWNER/REPO from the given repo_config_input.
-    If the repo_config_input is None, get the repo from the output of the command
-    `git remote get-url origin` for the current directory.
-
-    Args:
-        repo_config_input: Str or None
-            The repository URL or GitHub repository in the format OWNER/REPO.
+    Get the remote repository url from the current directory.
 
     Returns:
         Str
-            The repository URL.
+            The remote repository GitHub URL or SSH.
+    """
+    command = ["git", "remote", "get-url", "origin"]
+    return get_command_output(command)
+
+
+def get_repo_from_url(repo_url: str) -> str:
+    """
+    Get the GitHub repo in the format OWNER/REPO from the GitHub URL or SSH.
+
+    Returns:
+        Str
+            The remote repository URL.
+    """
+    for prefix in (GITHUB_URL, GITHUB_SSH):
+        if repo_url.startswith(prefix):
+            remainder = repo_url.removeprefix(prefix)
+            repo = "/".join(remainder.split('/')[0:2]).removesuffix(".git")
+            return repo
+    raise ValueError(f"Invalid GitHub repo URL: '{repo_url}'")
+
+
+def get_repo_from_input(repo_config_input: NonEmptyStr | None) -> str:
+    """
+    Return the GitHub repository in the format 'OWNER/REPO'.
+
+    If repo_config_input is None, attempts to infer the repository from the local Git
+    remote via `git remote get-url origin`. Accepts either a full GitHub URL, an SSH URL,
+    or a direct 'OWNER/REPO' input.
+
+    Args:
+        repo_config_input: Str or None
+            The input repository string, or None to auto-detect.
+
+    Returns:
+        Str
+            A string in the format 'OWNER/REPO'.
     """
     try:
-        if repo_config_input is None:
-            command = ["git", "remote", "get-url", "origin"]
-            repo = get_command_output(command)
-        else:
-            repo = repo_config_input
-
-        # Extract the repository name from the URL
-        if repo.startswith(GITHUB_URL):
-            repo_owner_name = "/".join(repo.split("/")[3:5])
-        elif repo.startswith(GITHUB_SSH):
-            repo_owner_name = "/".join(repo.split(":")[1].split("/")[0:2]).removesuffix(
-                ".git"
-            )
-        else:
-            repo_owner_name = repo
-        if not re.fullmatch(r"[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+", repo_owner_name):
-            raise ValueError
-    except (IndexError, ValueError):
-        raise ValueError(f"Invalid GitHub repo: '{repo}'")
+        repo = get_remote_repo() if repo_config_input is None else repo_config_input
     except subprocess.CalledProcessError as e:
         raise ValueError(
             f"Failed to get the GitHub repository from local directory: {e.stderr.strip()}"
         ) from e
-    return repo_owner_name
+    if repo.startswith(GITHUB_URL) or repo.startswith(GITHUB_SSH):
+        repo = get_repo_from_url(repo)
+    if not re.fullmatch(r"[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+", repo):
+        raise ValueError(f"Invalid GitHub repo: '{repo}'")
+    return repo
+
+
+def is_main_website(main_branch_config_input: NonEmptyStr, repo: str) -> bool:
+    """
+    Determine whether the build is intended for the main website.
+
+    Args:
+        main_branch_config_input: Str
+            The branch for the main site configuration.
+        repo: Str
+            The GitHub repository in the format OWNER/REPO.
+
+    Returns:
+        bool: True if both the branch and repository match the main site configuration;
+            False otherwise.
+    """
+    try:
+        remote_repo = get_remote_repo()
+        command = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
+        local_branch = get_command_output(command)
+    except subprocess.CalledProcessError:
+        return False
+    remote_owner_name = get_repo_from_url(remote_repo)
+    return (main_branch_config_input == local_branch) and (
+        repo == remote_owner_name
+    )

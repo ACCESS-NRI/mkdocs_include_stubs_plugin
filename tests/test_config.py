@@ -1,24 +1,49 @@
 import pytest
+
 from include_configuration_stubs.config import (
-    check_empty_input,
+    NonEmptyStr,
 )
 
 
 
-def test_check_empty_input_no_raise():
-    """
-    Test the check_empty_input function when passing.
-    """
-    test_value = "example"
-    test_name = "example_input"
-    check_empty_input(test_value, test_name)
+def test_NonEmptyStr_valid():
+    assert NonEmptyStr("hello") == "hello"
+    assert NonEmptyStr("  hello ") == "hello"
+    assert isinstance(NonEmptyStr("hi"), NonEmptyStr)
+    assert issubclass(type(NonEmptyStr("abc")), str)
 
-def test_check_empty_input_raise():
-    """
-    Test the check_empty_input function when raising an Exception.
-    """
-    test_value = ""
-    test_name = "example_input"
+
+@pytest.mark.parametrize(
+    "input_value",
+    [
+        "",  # empty_string
+        "  ",  # empty_string_with_spaces
+    ],
+    ids=[
+        "empty_string",
+        "empty_string_with_spaces",
+    ],
+)
+def test_NonEmptyStr_empty(input_value):
     with pytest.raises(ValueError) as excinfo:
-        check_empty_input(test_value, test_name)
-        assert excinfo == f"'{test_name}' cannot be empty."
+        NonEmptyStr(input_value)
+        assert str(excinfo.value) == "String must not be empty."
+
+
+@pytest.mark.parametrize(
+    "input_value, type",
+    [
+        (123,"int"),  # int
+        (None,"NoneType"),  # none
+        ([1,2,'hello'],"list"),  # list
+    ],
+    ids=[
+        "int",
+        "none",
+        "list",
+    ],
+)
+def test_NonEmptyStr_non_string_input(input_value, type):
+    with pytest.raises(ValueError) as excinfo:
+        NonEmptyStr(input_value)
+        assert str(excinfo.value) == f"Expected string, got {type}."

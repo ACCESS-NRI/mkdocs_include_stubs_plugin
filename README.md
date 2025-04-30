@@ -21,14 +21,33 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
     - `OWNER/REPO`
     If not specified, the output of `git remote get-url origin` for the local directory will be used.
     Only GitHub repositories are supported.
-- `pattern_released`
-    Glob pattern used to select tags that represent released configurations.
-    These configurations are included in the "main" website, in the PR previews and local preview.
-    Default value is `release-*`.
-- `pattern_development`
-    Glob pattern used to select branches that represent development configurations.
-    These configurations are included in the PR previews and local preview. They are NOT included in the "main" website.
-    Default value is `dev-*`.
+- `main_website`
+    Configuration parameters for the main website.
+    Sub-parameters:
+    - `pattern`
+        Glob pattern for _Git_ refs to be included when searching for configuration stubs.
+        Default value is `release-*`.
+    - `ref_type`
+        Type of _Git_ ref to be used when searching for configuration stubs.
+        Possible values are `branch`, `tag`, `all`.
+        Default value is `tag`.
+    - `branch`
+        _Git_ branch where the main website documentation resides.
+        Default value is `main`.
+- `preview_website`
+    Configuration parameters for the PR preview and local preview websites.
+    **Note**: The `main_website` configurations are also included when building preview websites. To exclude the main website from the preview websites, set `strict` to `true`.
+    Sub-parameters:
+    - `pattern`
+        Glob pattern for _Git_ refs to be included when searching for configuration stubs.
+        Default value is `dev-*`.
+    - `ref_type`
+        Type of _Git_ ref to be used when searching for configuration stubs.
+        Possible values are `branch`, `tag`, `all`.
+        Default value is `branch`.
+    - `strict`
+        If set to `true`, don't include `main_website` configurations in the preview websites.
+        Default value is `false`.
 - `stubs_dir`
     Path to the directory containing the configuration stubs, relative to the root of the repository.
     This directory needs to contain **one single file** in one of the `supported_file_formats` for each configuration.
@@ -37,18 +56,15 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
     - Refs whose `stubs_dir` contain multiple files
     - Refs whose `stubs_dir` contain a single file in a non-supported format
     Default value is `documentation`.
-- `supported_file_formats`
-    Comma-separated list of file extensions (without the dot) which represent the supported formats for the
-    files in `stubs_dir`.
-    Default value is `md,html` (MarkDown and HTML).
-- `main_website_branch`
-    _Git_ branch where the "main" website documentation resides.
-    Default value is `main`.
-- `stubs_website_dir`
+- `stubs_site_dir`
     Path to the directory where the configuration stubs will be stored, relative to the `site_dir`.
     If the navigation (`nav` field in the `mkdoc.yaml` file) is defined, this will also be the parent 
     of the configuration pages in the website navigation tree.
-    Default value is `Configurations`.
+    Default value is `configurations`.
+- `supported_file_formats`
+    List of file extensions (including the dot) which represent the supported formats for the
+    files in `stubs_dir`.
+    Default value is [`.md`, `.html`] (MarkDown and HTML).
 
 ## Lincense
 Apache Software License 2.0
