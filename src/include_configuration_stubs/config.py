@@ -58,7 +58,7 @@ class _PreviewWebsiteOptions(Config):
 
     ref_type = opt.Choice([grt.value for grt in GitRefType], default="branch")
 
-    strict = opt.Type(
+    no_main = opt.Type(
         bool,
         default=False,
     )

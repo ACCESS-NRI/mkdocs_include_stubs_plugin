@@ -36,7 +36,7 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
         Default value is `main`.
 - `preview_website`
     Configuration parameters for the PR preview and local preview websites.
-    **Note**: The `main_website` configurations are also included when building preview websites. To exclude the main website from the preview websites, set `strict` to `true`.
+    **Note**: The `main_website` configurations are also included when building preview websites. To exclude the main website from the preview websites, set `no_main` to `true`.
     Sub-parameters:
     - `pattern`
         Glob pattern for _Git_ refs to be included when searching for configuration stubs.
@@ -45,7 +45,7 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
         Type of _Git_ ref to be used when searching for configuration stubs.
         Possible values are `branch`, `tag`, `all`.
         Default value is `branch`.
-    - `strict`
+    - `no_main`
         If set to `true`, don't include `main_website` configurations in the preview websites.
         Default value is `false`.
 - `stubs_dir`
