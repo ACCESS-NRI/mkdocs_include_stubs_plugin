@@ -15,7 +15,7 @@ from include_configuration_stubs.utils import (
 )
 
 
-class IncludeConfigurationsPlugin(BasePlugin[ConfigScheme]):
+class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
     def on_config(self, config):
         self.supported_file_formats = get_supported_file_formats(
             config.supported_file_formats
