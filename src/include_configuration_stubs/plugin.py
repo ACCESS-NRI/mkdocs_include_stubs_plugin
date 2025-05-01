@@ -5,7 +5,6 @@ import os
 from mkdocs.plugins import BasePlugin
 from mkdocs.structure.files import File
 
-from include_configuration_stubs import PLUGIN_NAME
 from include_configuration_stubs.config import ConfigScheme
 from include_configuration_stubs.utils import (
     get_config_stub,
@@ -22,6 +21,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         self.is_main_website = is_main_website(
             self.config["main_website"]["branch"], self.repo
         )
+        return config
 
     def on_files(self, files, config):
         """Hook to modify the files."""
@@ -51,11 +51,10 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         # For each ref, add its configuration stubs to the site, if present
         stubs_dir = self.config["stubs_dir"]
         stubs_site_dir = self.config["stubs_site_dir"]
-        docs_dir = config["docs_dir"]
-        site_dir = config["site_dir"]
-        use_directory_urls = config["use_directory_urls"]
         # Get the supported file formats
-        supported_file_formats = get_supported_file_formats(self.config["supported_file_formats"])
+        supported_file_formats = get_supported_file_formats(
+            self.config["supported_file_formats"]
+        )
         for ref in refs:
             config_stub = get_config_stub(
                 ref,
@@ -65,17 +64,15 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
             )
             if config_stub is not None:
                 fname = next(iter(config_stub))
-                config_stub_file = File(
-                    path=fname,
-                    src_dir=os.path.join(docs_dir, stubs_dir),
-                    dest_dir=os.path.join(
-                        site_dir,
-                        stubs_site_dir,
-                    ),
-                    use_directory_urls=use_directory_urls,
-                    generated_by=PLUGIN_NAME,
+                #  Create the configuration stub file
+                config_stub_file = File.generated(
+                    config = config,
+                    src_uri = fname,
+                    content = config_stub[fname],
                 )
-                config_stub_file.content_string = config_stub[fname]
+                # Change the destination path by prepending the stubs_site_dir
+                config_stub_file.dest_path = os.path.join(stubs_site_dir,config_stub_file.dest_path)
+                #  Include the configuration stub file to the site
                 files.append(config_stub_file)
         return files
 
