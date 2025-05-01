@@ -9,7 +9,7 @@ import subprocess
 from functools import partial
 from typing import Sequence
 
-from include_configuration_stubs.config import GitRefType, NonEmptyStr
+from include_configuration_stubs.config import GitRefType
 
 GITHUB_URL = "https://github.com/"
 GITHUB_SSH = "git@github.com:"
@@ -178,7 +178,7 @@ def get_repo_from_url(repo_url: str) -> str:
     raise ValueError(f"Invalid GitHub repo URL: '{repo_url}'")
 
 
-def get_repo_from_input(repo_config_input: NonEmptyStr | None) -> str:
+def get_repo_from_input(repo_config_input: str | None) -> str:
     """
     Return the GitHub repository in the format 'OWNER/REPO'.
 
@@ -207,7 +207,7 @@ def get_repo_from_input(repo_config_input: NonEmptyStr | None) -> str:
     return repo
 
 
-def is_main_website(main_branch_config_input: NonEmptyStr, repo: str) -> bool:
+def is_main_website(main_branch_config_input: str, repo: str) -> bool:
     """
     Determine whether the build is intended for the main website.
 

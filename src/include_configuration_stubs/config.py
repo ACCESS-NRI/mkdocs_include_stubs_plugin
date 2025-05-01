@@ -1,8 +1,10 @@
 from enum import StrEnum
+from typing import TypeVar
 
 from mkdocs.config import Config
 from mkdocs.config import config_options as opt
-from typing import Any
+
+T = TypeVar("T")
 
 DEFAULT_PATTERN_MAIN_WEBSITE = r"release-*"
 DEFAULT_PATTERN_PREVIEW_WEBSITE = r"dev-*"
@@ -11,17 +13,20 @@ DEFAULT_MAIN_WEBSITE_BRANCH = "main"
 DEFAULT_STUBS_WEBSITE_DIR_PATH = "configurations"
 DEFAULT_SUPPORTED_FILE_FORMATS = [".md", ".html"]
 
-class NonEmptyStr(str):
+
+class _Type(opt.Type):
     """
-    A new type to use within mkdocs configuration to ensure that a string is stripped and not empty.
+    A new mkdocs.config.Type class to ensure that string types are stripped and not empty.
     """
-    def __new__(cls, value: Any) -> "NonEmptyStr":
-        if not isinstance(value, str):
-            raise ValueError(f"Expected string, got {type(value).__name__}")
-        cleaned = value.strip()
-        if not cleaned:
-            raise ValueError("String must not be empty.")
-        return str.__new__(cls, cleaned)
+
+    def run_validation(self, value: object) -> object:
+        value = super().run_validation(value)
+        # Post-process strings to ensure they are stripped and not empty
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError("String must not be empty.")
+        return value
 
 
 class GitRefType(StrEnum):
@@ -42,8 +47,8 @@ class _MainWebsiteOptions(Config):
 
     ref_type = opt.Choice([grt.value for grt in GitRefType], default="tag")
 
-    branch = opt.Type(
-        NonEmptyStr,
+    branch = _Type(
+        str,
         default=DEFAULT_MAIN_WEBSITE_BRANCH,
     )
 
@@ -58,7 +63,7 @@ class _PreviewWebsiteOptions(Config):
 
     ref_type = opt.Choice([grt.value for grt in GitRefType], default="branch")
 
-    no_main = opt.Type(
+    no_main = _Type(
         bool,
         default=False,
     )
@@ -67,21 +72,21 @@ class _PreviewWebsiteOptions(Config):
 class ConfigScheme(Config):
     """Configuration for the plugin."""
 
-    repo = opt.Type(
-        NonEmptyStr,
+    repo = _Type(
+        str,
         default=None,
     )
     main_website = opt.SubConfig(_MainWebsiteOptions)
     preview_website = opt.SubConfig(_PreviewWebsiteOptions)
-    stubs_dir = opt.Type(
-        NonEmptyStr,
+    stubs_dir = _Type(
+        str,
         default=DEFAULT_STUBS_DIR_PATH,
     )
-    stubs_site_dir = opt.Type(
-        NonEmptyStr,
+    stubs_site_dir = _Type(
+        str,
         default=DEFAULT_STUBS_WEBSITE_DIR_PATH,
     )
-    supported_file_formats = opt.Type(
-        (NonEmptyStr, list),
+    supported_file_formats = _Type(
+        (str, list),
         default=DEFAULT_SUPPORTED_FILE_FORMATS,
     )
