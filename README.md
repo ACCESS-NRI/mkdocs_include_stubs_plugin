@@ -56,11 +56,18 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
     - Refs whose `stubs_dir` contain multiple files
     - Refs whose `stubs_dir` contain a single file in a non-supported format
     Default value is `documentation`.
-- `stubs_site_dir`
-    Path to the directory where the configuration stubs will be stored, relative to the `site_dir`.
-    If the navigation (`nav` field in the `mkdoc.yaml` file) is defined, this will also be the parent 
-    of the configuration pages in the website navigation tree.
+- `stubs_parent_url`
+    Parent url path relative to the root url (`site_url`) for the configuration stubs.
+    Use an empty string (`""`) to specify the `site_dir`.
     Default value is `configurations`.
+- `stubs_nav_path`
+    '/'-separated path defining where the configuration stubs appear in the site navigation.
+    Each segment corresponds to a section in the navigation hierarchy.
+    Use an empty string (`""`) to place the stubs directly at the top level of the navigation.
+    By default, the value is derived from `stubs_parent_url` by capitalizing each path segment and 
+    replacing undersores with spaces.
+    For example, a `stubs_parent_url` set to `custom/navigation/configuration_stubs` becomes `Custom/Navigation/Configuration stubs`, 
+    placing the configuration stubs inside the `Configuration stubs` subsection, within the `Navigation` navigation section, under the top-level `Custom` Section.
 - `supported_file_formats`
     List of file extensions (including the dot) which represent the supported formats for the
     files in `stubs_dir`.

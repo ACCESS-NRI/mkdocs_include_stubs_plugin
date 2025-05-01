@@ -14,7 +14,6 @@ from include_configuration_stubs.utils import (
     get_remote_repo,
     get_repo_from_input,
     get_repo_from_url,
-    get_supported_file_formats,
     is_main_website,
 )
 
@@ -155,31 +154,6 @@ def test_get_config_stub(fp, output_json, expected_file_name):
         {expected_file_name: example_file_content} if expected_file_name else None
     )
     assert get_config_stub(ref, repo, path, supported_file_formats) == expected_output
-
-
-@pytest.mark.parametrize(
-    "input_formats, expected_output",
-    [
-        (["extension"], ("extension",)),  # single_item_list
-        (
-            [".md", ".html"],
-            (
-                ".md",
-                ".html",
-            ),
-        ),  # multiple_items_list
-        (".string", (".string",)),  # string
-    ],
-    ids=[
-        "single_item_list",
-        "multiple_items_list",
-        "string",
-    ],
-)
-def test_get_supported_file_formats(input_formats, expected_output):
-    """Test the get_supported_file_formats function."""
-    assert get_supported_file_formats(input_formats) == expected_output
-
 
 def test_get_remote_repo(fp):
     """

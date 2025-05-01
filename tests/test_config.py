@@ -1,41 +1,65 @@
 import pytest
 
 from include_configuration_stubs.config import (
-    _Type,
+    get_supported_file_formats,
+    set_default_stubs_nav_path,
 )
-from unittest.mock import patch
-
-@pytest.fixture
-def custom_type():
-    return _Type(str)
 
 
 @pytest.mark.parametrize(
-    "input_value, expected_output, raises_error",
+    "input_formats, expected_output",
     [
-        ("hello", "hello", False),  # valid_string
-        ("  hello  ", "hello", False),  # string_with_spaces
-        (123, 123, False),  # int_input
-        ([1,2,3], [1,2,3], False),  # list_input
-        (None, None, False),  # none_input
-        ("", None, True),  # empty_string
-        ("   ", None, True),  # empty_string_with_spaces
+        (["extension"], ("extension",)),  # single_item_list
+        (
+            [".md", ".html"],
+            (
+                ".md",
+                ".html",
+            ),
+        ),  # multiple_items_list
+        (".string", (".string",)),  # string
     ],
     ids=[
-        "valid_string",
-        "string_with_spacesing",
-        "int_input",
-        "list_input",
-        "none_input",
-        "empty_string",
-        "empty_string_with_spaces",
+        "single_item_list",
+        "multiple_items_list",
+        "string",
     ],
 )
-def test_valid_string(custom_type, input_value, expected_output, raises_error):
-    with patch('include_configuration_stubs.config.opt.Type.run_validation', return_value=input_value):
-        if not raises_error:
-            assert custom_type.run_validation(input_value) == expected_output
-        else:
-            with pytest.raises(ValueError) as excinfo:
-                custom_type.run_validation(input_value)
-                assert str(excinfo.value) == "String must not be empty."
+def test_get_supported_file_formats(input_formats, expected_output):
+    """Test the get_supported_file_formats function."""
+    assert get_supported_file_formats(input_formats) == expected_output
+
+
+@pytest.mark.parametrize(
+    "stubs_parent_url, expected_output",
+    [
+        ("configurations", "Configurations"),  # single_segment
+        ("", ""),  # empty_string
+        ("my/example/path", "My/Example/Path"),  # multiple_segments
+        (
+            "path_with/under_scores",
+            "Path with/Under scores",
+        ),  # underscores
+        (
+            "example /  path /with  spaces",
+            "Example/Path/With  spaces",
+        ),  # spaces
+        ("path/", "Path"),  # final_slash
+        (
+            "path_with/ spaces _ and_/under_scores ",
+            "Path with/Spaces   and /Under scores",
+        ),  # mixed
+    ],
+    ids=[
+        "single_segment",
+        "empty_string",
+        "multiple_segments",
+        "underscores",
+        "spaces",
+        "mixed",
+        "final_slash",
+    ],
+)
+def test_set_default_stubs_nav_path(stubs_parent_url, expected_output):
+    """Test the set_default_stubs_nav_path function."""
+    assert set_default_stubs_nav_path(stubs_parent_url) == expected_output

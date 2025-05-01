@@ -53,24 +53,6 @@ def check_is_installed(executable: str) -> None:
             f"'{executable}' is required but not found. Please install it and try again."
         )
 
-
-def get_supported_file_formats(file_formats: str | list) -> tuple[str, ...]:
-    """
-    Get the supported file formats from the given string.
-
-    Args:
-        file_formats: Str
-            The string containing the supported file formats.
-
-    Returns:
-        Tuple of Str
-            A tuple of supported file formats.
-    """
-    if isinstance(file_formats, str):
-        file_formats = [file_formats]
-    return tuple(file_formats)
-
-
 def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[str]:
     """
     Retrieve Git references of the specified type from the given repository,

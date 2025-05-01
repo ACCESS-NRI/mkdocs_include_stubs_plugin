@@ -5,13 +5,16 @@ import os
 from mkdocs.plugins import BasePlugin
 from mkdocs.structure.files import File
 
-from include_configuration_stubs.config import ConfigScheme
+from include_configuration_stubs.config import (
+    ConfigScheme,
+    get_supported_file_formats,
+    set_default_stubs_nav_path,
+)
 from include_configuration_stubs.utils import (
     get_config_stub,
     get_git_refs,
     get_repo_from_input,
     is_main_website,
-    get_supported_file_formats,
 )
 
 
@@ -21,6 +24,11 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         self.is_main_website = is_main_website(
             self.config["main_website"]["branch"], self.repo
         )
+        if self.config["stubs_nav_path"] is None:
+            self.config["stubs_nav_path"] = set_default_stubs_nav_path(
+                self.config["stubs_parent_url"]
+            )
+
         return config
 
     def on_files(self, files, config):
@@ -50,7 +58,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         refs = set(refs)
         # For each ref, add its configuration stubs to the site, if present
         stubs_dir = self.config["stubs_dir"]
-        stubs_site_dir = self.config["stubs_site_dir"]
+        stubs_parent_url = self.config["stubs_parent_url"]
         # Get the supported file formats
         supported_file_formats = get_supported_file_formats(
             self.config["supported_file_formats"]
@@ -66,16 +74,19 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
                 fname = next(iter(config_stub))
                 #  Create the configuration stub file
                 config_stub_file = File.generated(
-                    config = config,
-                    src_uri = fname,
-                    content = config_stub[fname],
+                    config=config,
+                    src_uri=fname,
+                    content=config_stub[fname],
                 )
-                # Change the destination path by prepending the stubs_site_dir
-                config_stub_file.dest_path = os.path.join(stubs_site_dir,config_stub_file.dest_path)
+                # Change the destination path by prepending the stubs_parent_url
+                config_stub_file.dest_path = os.path.join(
+                    stubs_parent_url, config_stub_file.dest_path
+                )
                 #  Include the configuration stub file to the site
                 files.append(config_stub_file)
         return files
 
     def on_nav(self, nav, config, files):
         """Hook to modify the navigation."""
+        breakpoint()
         pass

@@ -14,21 +14,6 @@ DEFAULT_STUBS_WEBSITE_DIR_PATH = "configurations"
 DEFAULT_SUPPORTED_FILE_FORMATS = [".md", ".html"]
 
 
-class _Type(opt.Type):
-    """
-    A new mkdocs.config.Type class to ensure that string types are stripped and not empty.
-    """
-
-    def run_validation(self, value: object) -> object:
-        value = super().run_validation(value)
-        # Post-process strings to ensure they are stripped and not empty
-        if isinstance(value, str):
-            value = value.strip()
-            if not value:
-                raise ValueError("String must not be empty.")
-        return value
-
-
 class GitRefType(StrEnum):
     """Enum for Git reference types."""
 
@@ -47,7 +32,7 @@ class _MainWebsiteOptions(Config):
 
     ref_type = opt.Choice([grt.value for grt in GitRefType], default="tag")
 
-    branch = _Type(
+    branch = opt.Type(
         str,
         default=DEFAULT_MAIN_WEBSITE_BRANCH,
     )
@@ -63,7 +48,7 @@ class _PreviewWebsiteOptions(Config):
 
     ref_type = opt.Choice([grt.value for grt in GitRefType], default="branch")
 
-    no_main = _Type(
+    no_main = opt.Type(
         bool,
         default=False,
     )
@@ -72,21 +57,60 @@ class _PreviewWebsiteOptions(Config):
 class ConfigScheme(Config):
     """Configuration for the plugin."""
 
-    repo = _Type(
+    repo = opt.Type(
         str,
         default=None,
     )
     main_website = opt.SubConfig(_MainWebsiteOptions)
     preview_website = opt.SubConfig(_PreviewWebsiteOptions)
-    stubs_dir = _Type(
+    stubs_dir = opt.Type(
         str,
         default=DEFAULT_STUBS_DIR_PATH,
     )
-    stubs_site_dir = _Type(
+    stubs_parent_url = opt.Type(
         str,
         default=DEFAULT_STUBS_WEBSITE_DIR_PATH,
     )
-    supported_file_formats = _Type(
+    stubs_nav_path = opt.Type(
+        str,
+        default="",
+    )
+    supported_file_formats = opt.Type(
         (str, list),
         default=DEFAULT_SUPPORTED_FILE_FORMATS,
     )
+
+
+def get_supported_file_formats(file_formats: str | list) -> tuple[str, ...]:
+    """
+    Get the supported file formats from the given string.
+
+    Args:
+        file_formats: Str
+            The string containing the supported file formats.
+
+    Returns:
+        Tuple of Str
+            A tuple of supported file formats.
+    """
+    if isinstance(file_formats, str):
+        file_formats = [file_formats]
+    return tuple(file_formats)
+
+
+def set_default_stubs_nav_path(stubs_parent_url: str) -> str:
+    """
+    Set the default stubs navigation path from the stubs_parent_url by by capitalizing each path segment and
+    replacing undersores with spaces.
+
+    Args:
+        stubs_parent_url: Str
+            The input stubs parent URL.
+
+    Returns:
+        Str
+            The default stubs navigation path.
+    """
+    parts = stubs_parent_url.removesuffix("/").split("/")
+    new_parts = [part.strip().replace("_", " ").capitalize() for part in parts]
+    return "/".join(new_parts)
