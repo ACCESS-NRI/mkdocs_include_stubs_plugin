@@ -12,6 +12,7 @@ from include_configuration_stubs.utils import (
     get_git_refs,
     get_repo_from_input,
     is_main_website,
+    get_supported_file_formats,
 )
 
 
@@ -53,12 +54,14 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         docs_dir = config["docs_dir"]
         site_dir = config["site_dir"]
         use_directory_urls = config["use_directory_urls"]
+        # Get the supported file formats
+        supported_file_formats = get_supported_file_formats(self.config["supported_file_formats"])
         for ref in refs:
             config_stub = get_config_stub(
                 ref,
                 repo,
                 stubs_dir,
-                self.config["supported_file_formats"],
+                supported_file_formats,
             )
             if config_stub is not None:
                 fname = next(iter(config_stub))
