@@ -51,4 +51,5 @@ parentdir_prefix = "mkdocs-include-configuration-stubs-plugin-"
 
 [tool.pytest.ini_options]
 pythonpath = "src"
+testpaths = ["tests/"]
 addopts = "--cov=src --cov-report=term-missing"
