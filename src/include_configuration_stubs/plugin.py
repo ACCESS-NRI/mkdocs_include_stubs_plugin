@@ -16,6 +16,7 @@ from include_configuration_stubs.utils import (
     get_git_refs,
     get_repo_from_input,
     is_main_website,
+    make_file_unique,
 )
 
 
@@ -53,8 +54,6 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         """
         Dynamically add congiguration stubs to the MkDocs files list.
         """
-        #  Create the list of filenames to check for same file names and to sort the pages
-        self.config_fnames = []
         # Get the git refs for the website
         refs = self.get_git_refs_for_wesbsite()
         
@@ -74,8 +73,6 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
             )
             if config_stub is not None:
                 fname = next(iter(config_stub))
-                # Filenames need to be unique
-                self.config_fnames.append(fname)
                 #  Create the configuration stub file
                 config_stub_file = File.generated(
                     config=config,
@@ -86,6 +83,8 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
                 config_stub_file.dest_path = os.path.join(
                     stubs_parent_url, config_stub_file.dest_path
                 )
+                #  Make the file unique
+                make_file_unique(config_stub_file, files)
                 #  Include the configuration stub file to the site
                 files.append(config_stub_file)
         return files

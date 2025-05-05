@@ -237,20 +237,17 @@ def append_number_to_file_name(
     name, ext = os.path.splitext(filename)
     return f"{name}_{number}{ext}"
 
-def make_file_unique(file: File, files: Files) -> File:
+def make_file_unique(file: File, files: Files) -> None:
     """
     Make a MkDocs File unique by appending a number to its `src_path` if the file already exists 
     in the Files list.
+    Changes the object in place.
 
     Args:
         file_name: mkdocs.structure.files.File
             The original MkDocs file.
         files: mkdocs.structure.files.File
             The list of existing MkDocs files.
-
-    Returns:
-        mkdocs.structure.files.File
-            The unique MkDocs file.
     """
     existing_src_paths = {f.src_path for f in files}
     existing_dest_paths = {f.dest_path for f in files}
@@ -265,5 +262,5 @@ def make_file_unique(file: File, files: Files) -> File:
             if new_src not in existing_src_paths and new_dest not in existing_dest_paths:
                 file.src_path = new_src
                 file.dest_path = new_dest
+                # Log warning if the file name was changed
                 break
-    return file

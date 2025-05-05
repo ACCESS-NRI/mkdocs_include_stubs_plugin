@@ -475,6 +475,6 @@ def test_make_file_unique(
             MagicMock(src_path="src_path_3", dest_path="other_dest_path"),
         ]
     )
-    unique_file = make_file_unique(file, files)
-    assert unique_file.src_path == expected_output_src_path
-    assert unique_file.dest_path == expected_output_dest_path
+    make_file_unique(file, files)
+    assert file.src_path == expected_output_src_path
+    assert file.dest_path == expected_output_dest_path
