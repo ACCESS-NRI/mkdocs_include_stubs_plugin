@@ -2,13 +2,16 @@
 Module for utility functions.
 """
 
+import os
 import json
 import re
 import shutil
 import subprocess
 from functools import partial
 from typing import Sequence
+from itertools import count
 
+from mkdocs.structure.files import File, Files
 from include_configuration_stubs.config import GitRefType
 
 GITHUB_URL = "https://github.com/"
@@ -213,3 +216,54 @@ def is_main_website(main_branch_config_input: str, repo: str) -> bool:
     return (main_branch_config_input == local_branch) and (
         repo == remote_owner_name
     )
+
+def append_number_to_file_name(
+    filename: str,
+    number: int,
+) -> str:
+    """
+    Append a number to the file name, taking into account any extensions.
+
+    Args:
+        filename: Str
+            The file name to modify.
+        number: Int
+            The number to append.
+
+    Returns:
+        Str
+            The modified file name with a number appended.
+    """
+    name, ext = os.path.splitext(filename)
+    return f"{name}_{number}{ext}"
+
+def make_file_unique(file: File, files: Files) -> File:
+    """
+    Make a MkDocs File unique by appending a number to its `src_path` if the file already exists 
+    in the Files list.
+
+    Args:
+        file_name: mkdocs.structure.files.File
+            The original MkDocs file.
+        files: mkdocs.structure.files.File
+            The list of existing MkDocs files.
+
+    Returns:
+        mkdocs.structure.files.File
+            The unique MkDocs file.
+    """
+    existing_src_paths = {f.src_path for f in files}
+    existing_dest_paths = {f.dest_path for f in files}
+    
+    src = file.src_path
+    dest = file.dest_path
+
+    if src in existing_src_paths or dest in existing_dest_paths:
+        for i in count(1): # pragma: no branch
+            new_src = append_number_to_file_name(src, i)
+            new_dest = append_number_to_file_name(dest, i)
+            if new_src not in existing_src_paths and new_dest not in existing_dest_paths:
+                file.src_path = new_src
+                file.dest_path = new_dest
+                break
+    return file

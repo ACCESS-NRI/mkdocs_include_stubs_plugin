@@ -40,29 +40,6 @@ def create_plugin(mock_plugin_config):
 
     return _plugin
 
-
-@pytest.fixture
-def mock_file():
-    """Mock file object."""
-    filemock = MagicMock()
-    filemock.generated.return_value = MagicMock()
-    return filemock
-
-@pytest.fixture
-def mock_files():
-    """Factory function to create the Files object."""
-
-    def _filesmock():
-        filesmock = MagicMock()
-        filesmock._appended = []
-        filesmock.append.side_effect = filesmock._appended.append
-        filesmock.__len__.side_effect = lambda: len(filesmock._appended)
-        filesmock.__iter__.side_effect = lambda: iter(filesmock._appended)
-        return filesmock
-
-    return _filesmock
-
-
 def test_on_config(create_plugin, mock_plugin_config):
     """Test the on_config method of the plugin."""
     plugin = create_plugin()
@@ -170,13 +147,12 @@ def test_on_files_adds_stub_file(
     config_stub_output,
     expected_len,
     create_plugin,
-    mock_file,
     mock_files,
 ):
     """Test the on_files method."""
+    files = mock_files()
     mkdocs_config = MagicMock()
-    mock_File_generated.return_value = mock_file
-    files = mock_files()  # Empty list of files
+    mock_File_generated.return_value = MagicMock()
     plugin = create_plugin(repo="example_repo")
     plugin.get_git_refs_for_wesbsite = MagicMock(return_value={"ref1", "ref2", "ref3"})
     mock_get_config_stub.return_value = config_stub_output
@@ -185,4 +161,4 @@ def test_on_files_adds_stub_file(
     assert len(result_files) == expected_len
     if config_stub_output is not None:
         for rf in result_files:
-            assert rf.dest_path.startswith("parent/url/") 
+            assert rf.dest_path.startswith("parent/url/")

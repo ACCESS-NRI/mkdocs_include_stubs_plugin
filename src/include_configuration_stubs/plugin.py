@@ -53,15 +53,18 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         """
         Dynamically add congiguration stubs to the MkDocs files list.
         """
-        # Add the configuration stubs to the site
+        #  Create the list of filenames to check for same file names and to sort the pages
+        self.config_fnames = []
+        # Get the git refs for the website
         refs = self.get_git_refs_for_wesbsite()
-        # For each ref, add its configuration stubs to the site, if present
+        
         stubs_dir = self.config["stubs_dir"]
         stubs_parent_url = self.config["stubs_parent_url"]
         # Get the supported file formats
         supported_file_formats = get_supported_file_formats(
             self.config["supported_file_formats"]
         )
+        # For each ref, add its configuration stubs to the site, if present
         for ref in refs:
             config_stub = get_config_stub(
                 ref,
@@ -71,6 +74,8 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
             )
             if config_stub is not None:
                 fname = next(iter(config_stub))
+                # Filenames need to be unique
+                self.config_fnames.append(fname)
                 #  Create the configuration stub file
                 config_stub_file = File.generated(
                     config=config,

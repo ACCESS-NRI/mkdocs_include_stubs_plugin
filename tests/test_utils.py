@@ -1,12 +1,13 @@
 # fp is a fixture provided by pytest-subprocess.
 
 from subprocess import CalledProcessError
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from include_configuration_stubs.config import GitRefType
 from include_configuration_stubs.utils import (
+    append_number_to_file_name,
     check_is_installed,
     get_command_output,
     get_config_stub,
@@ -15,6 +16,7 @@ from include_configuration_stubs.utils import (
     get_repo_from_input,
     get_repo_from_url,
     is_main_website,
+    make_file_unique,
 )
 
 
@@ -154,6 +156,7 @@ def test_get_config_stub(fp, output_json, expected_file_name):
         {expected_file_name: example_file_content} if expected_file_name else None
     )
     assert get_config_stub(ref, repo, path, supported_file_formats) == expected_output
+
 
 def test_get_remote_repo(fp):
     """
@@ -423,3 +426,55 @@ def test_is_main_website_command_exception(fp):
         assert output is False
         mock_get_remote_repo.assert_called()
         mock_get_repo_from_url.assert_not_called()
+
+
+def test_append_number_to_file_name():
+    """
+    Test the append_number_to_file_name function.
+    """
+    filename = "example.extension"
+    number = 31
+    expected_output = "example_31.extension"
+    output = append_number_to_file_name(filename, number)
+    assert output == expected_output
+
+
+@pytest.mark.parametrize(
+    "input_src_path, input_dest_path, expected_output_src_path, expected_output_dest_path",
+    [
+        ("other", "something", "other", "something"),  # unique
+        ("src_path", "other_dest", "src_path_2", "other_dest_2"),  # same src_path
+        ("other_src", "dest_path", "other_src_1", "dest_path_1"),  # same dest_path
+        (
+            "src_path",
+            "dest_path",
+            "src_path_4",
+            "dest_path_4",
+        ),  # same src_path and dest_path
+    ],
+    ids=[
+        "unique",
+        "same_src_path",
+        "same_dest_path",
+        "same_src_path_and_dest_path",
+    ],
+)
+def test_make_file_unique(
+    mock_files,
+    input_src_path,
+    input_dest_path,
+    expected_output_src_path,
+    expected_output_dest_path,
+):
+    """Test the make_file_unique function."""
+    file = MagicMock(src_path=input_src_path, dest_path=input_dest_path)
+    files = mock_files(
+        [
+            MagicMock(src_path="src_path", dest_path="dest_path"),
+            MagicMock(src_path="src_path_1", dest_path="dest_path_2"),
+            MagicMock(src_path="src_path_3", dest_path="other_dest_path"),
+        ]
+    )
+    unique_file = make_file_unique(file, files)
+    assert unique_file.src_path == expected_output_src_path
+    assert unique_file.dest_path == expected_output_dest_path
