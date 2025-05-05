@@ -434,7 +434,7 @@ def test_append_number_to_file_name():
     """
     filename = "example.extension"
     number = 31
-    expected_output = "example_31.extension"
+    expected_output = "example31.extension"
     output = append_number_to_file_name(filename, number)
     assert output == expected_output
 
@@ -442,14 +442,14 @@ def test_append_number_to_file_name():
 @pytest.mark.parametrize(
     "input_src_path, input_dest_path, expected_output_src_path, expected_output_dest_path",
     [
-        ("other", "something", "other", "something"),  # unique
-        ("src_path", "other_dest", "src_path_2", "other_dest_2"),  # same src_path
-        ("other_src", "dest_path", "other_src_1", "dest_path_1"),  # same dest_path
+        ("other", "something/index.html", "other", "something/index.html"),  # unique
+        ("src_path", "other_dest/index.html", "src_path2", "other_dest2/index.html"),  # same src_path
+        ("other_src", "dest_path/index.html", "other_src1", "dest_path1/index.html"),  # same dest_path
         (
             "src_path",
-            "dest_path",
-            "src_path_4",
-            "dest_path_4",
+            "dest_path/index.html",
+            "src_path4",
+            "dest_path4/index.html",
         ),  # same src_path and dest_path
     ],
     ids=[
@@ -470,9 +470,9 @@ def test_make_file_unique(
     file = MagicMock(src_path=input_src_path, dest_path=input_dest_path)
     files = mock_files(
         [
-            MagicMock(src_path="src_path", dest_path="dest_path"),
-            MagicMock(src_path="src_path_1", dest_path="dest_path_2"),
-            MagicMock(src_path="src_path_3", dest_path="other_dest_path"),
+            MagicMock(src_path="src_path", dest_path="dest_path/index.html"),
+            MagicMock(src_path="src_path1", dest_path="dest_path2/index.html"),
+            MagicMock(src_path="src_path3", dest_path="other_dest_path/index.html"),
         ]
     )
     make_file_unique(file, files)

@@ -5,6 +5,7 @@ import os
 from mkdocs.plugins import BasePlugin
 from mkdocs.structure.files import File, Files
 from mkdocs.config.defaults import MkDocsConfig
+from include_configuration_stubs import PLUGIN_NAME
 
 from include_configuration_stubs.config import (
     ConfigScheme,
@@ -29,6 +30,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         is_build_for_main_website = is_main_website(
             self.config["main_website"]["branch"], self.repo
         )
+        print(f"{PLUGIN_NAME}: building for {'main' if is_build_for_main_website else 'preview'} website.")
         preview_website_config = self.config["preview_website"]
         main_website_config = self.config["main_website"]
         website_config = main_website_config if is_build_for_main_website else preview_website_config

@@ -235,7 +235,7 @@ def append_number_to_file_name(
             The modified file name with a number appended.
     """
     name, ext = os.path.splitext(filename)
-    return f"{name}_{number}{ext}"
+    return f"{name}{number}{ext}"
 
 def make_file_unique(file: File, files: Files) -> None:
     """
@@ -258,7 +258,9 @@ def make_file_unique(file: File, files: Files) -> None:
     if src in existing_src_paths or dest in existing_dest_paths:
         for i in count(1): # pragma: no branch
             new_src = append_number_to_file_name(src, i)
-            new_dest = append_number_to_file_name(dest, i)
+            dest_dir, dest_name = os.path.split(dest)
+            new_dir = append_number_to_file_name(dest_dir, i)
+            new_dest = os.path.join(new_dir, dest_name)
             if new_src not in existing_src_paths and new_dest not in existing_dest_paths:
                 file.src_path = new_src
                 file.dest_path = new_dest
