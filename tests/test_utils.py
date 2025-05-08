@@ -7,6 +7,7 @@ import pytest
 
 from include_configuration_stubs.config import GitRefType
 from include_configuration_stubs.utils import (
+    ConfigStub,
     append_number_to_file_name,
     check_is_installed,
     get_command_output,
@@ -153,7 +154,9 @@ def test_get_config_stub(fp, output_json, expected_file_name):
     fp.register(command1, stdout=output_json)
     fp.register(command2, stdout=example_file_content)
     expected_output = (
-        {expected_file_name: example_file_content} if expected_file_name else None
+        ConfigStub(fname=expected_file_name, content=example_file_content, title=None)
+        if expected_file_name
+        else None
     )
     assert get_config_stub(ref, repo, path, supported_file_formats) == expected_output
 
@@ -440,34 +443,66 @@ def test_append_number_to_file_name():
 
 
 @pytest.mark.parametrize(
-    "input_src_path, input_dest_path, expected_output_src_path, expected_output_dest_path",
+    "input_src_path, input_dest_path, use_directory_urls, expected_output_src_path, expected_output_dest_path",
     [
-        ("other", "something/index.html", "other", "something/index.html"),  # unique
-        ("src_path", "other_dest/index.html", "src_path2", "other_dest2/index.html"),  # same src_path
-        ("other_src", "dest_path/index.html", "other_src1", "dest_path1/index.html"),  # same dest_path
+        (
+            "other",
+            "something/index.html",
+            True,
+            "other",
+            "something/index.html",
+        ),  # unique
+        (
+            "src_path",
+            "other_dest/index.html",
+            True,
+            "src_path2",
+            "other_dest2/index.html",
+        ),  # same src_path
+        (
+            "other_src",
+            "dest_path/index.html",
+            True,
+            "other_src1",
+            "dest_path1/index.html",
+        ),  # same dest_path
         (
             "src_path",
             "dest_path/index.html",
+            True,
             "src_path4",
             "dest_path4/index.html",
         ),  # same src_path and dest_path
+        (
+            "src_path",
+            "other_dest/index.html",
+            False,
+            "src_path2",
+            "other_dest/index2.html",
+        ),  # use_directory_urls_false
     ],
     ids=[
         "unique",
         "same_src_path",
         "same_dest_path",
         "same_src_path_and_dest_path",
+        "use_directory_urls_false",
     ],
 )
 def test_make_file_unique(
     mock_files,
     input_src_path,
     input_dest_path,
+    use_directory_urls,
     expected_output_src_path,
     expected_output_dest_path,
 ):
     """Test the make_file_unique function."""
-    file = MagicMock(src_path=input_src_path, dest_path=input_dest_path)
+    file = MagicMock(
+        src_path=input_src_path,
+        dest_path=input_dest_path,
+        use_directory_urls=use_directory_urls,
+    )
     files = mock_files(
         [
             MagicMock(src_path="src_path", dest_path="dest_path/index.html"),

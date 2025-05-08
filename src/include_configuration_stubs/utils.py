@@ -7,6 +7,7 @@ import json
 import re
 import shutil
 import subprocess
+from collections import namedtuple
 from functools import partial
 from typing import Sequence
 from itertools import count
@@ -17,6 +18,7 @@ from include_configuration_stubs.config import GitRefType
 GITHUB_URL = "https://github.com/"
 GITHUB_SSH = "git@github.com:"
 
+ConfigStub = namedtuple("ConfigStub", ["fname", "title", "content"])
 
 run_command = partial(subprocess.run, capture_output=True, text=True, check=True)
 
@@ -94,7 +96,7 @@ def get_config_stub(
     repo: str,
     stub_dir: str,
     supported_file_formats: tuple[str, ...],
-) -> dict[str, str] | None:
+) -> ConfigStub | None:
     """
     If the given git ref includes the specified stub_dir containing
     one file in a supported fortmat, return a dictionary with the name and content of the file.
@@ -110,9 +112,9 @@ def get_config_stub(
             Tuple of supported file formats.
 
     Returns:
-        Dict | None
+        ConfigStub | None
             If the path exists at the given ref and contains exactly one supported
-            document file, a dictionary in the format {<file_name>: <file_content>} is returned.
+            document file, a ConfigStub namedtuple is returned.
             None is returned otherwise.
     """
     url = f"https://api.github.com/repos/{repo}/contents/{stub_dir}?ref={ref}"
@@ -132,7 +134,7 @@ def get_config_stub(
     )
     command = ["curl", "-s", raw_file_url]
     content = get_command_output(command)
-    return {file_name: content}
+    return ConfigStub(fname = file_name, content = content, title = None)
 
 
 def get_remote_repo() -> str:
@@ -251,16 +253,19 @@ def make_file_unique(file: File, files: Files) -> None:
     """
     existing_src_paths = {f.src_path for f in files}
     existing_dest_paths = {f.dest_path for f in files}
-    
+    use_directory_urls = file.use_directory_urls
     src = file.src_path
     dest = file.dest_path
 
     if src in existing_src_paths or dest in existing_dest_paths:
         for i in count(1): # pragma: no branch
             new_src = append_number_to_file_name(src, i)
-            dest_dir, dest_name = os.path.split(dest)
-            new_dir = append_number_to_file_name(dest_dir, i)
-            new_dest = os.path.join(new_dir, dest_name)
+            if use_directory_urls:
+                dest_dir, dest_name = os.path.split(dest)
+                new_dir = append_number_to_file_name(dest_dir, i)
+                new_dest = os.path.join(new_dir, dest_name)
+            else:
+                new_dest = append_number_to_file_name(dest, i)
             if new_src not in existing_src_paths and new_dest not in existing_dest_paths:
                 file.src_path = new_src
                 file.dest_path = new_dest

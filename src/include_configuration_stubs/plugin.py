@@ -74,12 +74,11 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
                 supported_file_formats,
             )
             if config_stub is not None:
-                fname = next(iter(config_stub))
                 #  Create the configuration stub file
                 config_stub_file = File.generated(
                     config=config,
-                    src_uri=fname,
-                    content=config_stub[fname],
+                    src_uri=config_stub.fname,
+                    content=config_stub.content,
                 )
                 # Change the destination path by prepending the stubs_parent_url
                 config_stub_file.dest_path = os.path.join(

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from include_configuration_stubs.plugin import IncludeConfigurationStubsPlugin
+from include_configuration_stubs.utils import ConfigStub
 
 
 @pytest.fixture
@@ -127,10 +128,10 @@ def test_get_git_refs_for_wesbsite_preview_no_main_false(
 
 
 @pytest.mark.parametrize(
-    "config_stub_output, expected_len",
+    "config_stub_output",
     [
-        ({"key": "value"}, 3), # valid_config_stub
-        (None, 0), # None_config_stub
+        ConfigStub(fname="key", content="value", title=None), # valid_config_stub
+        None, # None_config_stub
     ],
     ids= [
         "valid_config_stub", 
@@ -139,26 +140,26 @@ def test_get_git_refs_for_wesbsite_preview_no_main_false(
 )
 @patch("include_configuration_stubs.plugin.get_config_stub")
 @patch("include_configuration_stubs.plugin.get_supported_file_formats")
-@patch("include_configuration_stubs.plugin.File.generated")
 def test_on_files_adds_stub_file(
-    mock_File_generated,
     mock_get_supported_file_formats,
     mock_get_config_stub,
     config_stub_output,
-    expected_len,
     create_plugin,
     mock_files,
 ):
     """Test the on_files method."""
     files = mock_files()
     mkdocs_config = MagicMock()
-    mock_File_generated.return_value = MagicMock()
     plugin = create_plugin(repo="example_repo")
-    plugin.get_git_refs_for_wesbsite = MagicMock(return_value={"ref1", "ref2", "ref3"})
+    plugin.get_git_refs_for_wesbsite = MagicMock(return_value={"ref1", "ref2"})
     mock_get_config_stub.return_value = config_stub_output
     result_files = plugin.on_files(files, mkdocs_config)
-
+    expected_len = 0 if config_stub_output is None else 2
     assert len(result_files) == expected_len
     if config_stub_output is not None:
-        for rf in result_files:
-            assert rf.dest_path.startswith("parent/url/")
+        assert result_files[0].src_uri == config_stub_output.fname
+        assert result_files[0]._content == config_stub_output.content
+        assert result_files[0].dest_path.startswith("parent/url/")
+        assert result_files[1].src_uri == config_stub_output.fname + "1"
+        assert result_files[1]._content == config_stub_output.content
+        assert result_files[1].dest_path.startswith("parent/url1/")

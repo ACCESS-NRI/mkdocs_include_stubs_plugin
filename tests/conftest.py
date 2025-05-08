@@ -12,7 +12,8 @@ def mock_files():
         filesmock.extend.side_effect = filesmock._appended.extend
         filesmock.__len__.side_effect = lambda: len(filesmock._appended)
         filesmock.__iter__.side_effect = lambda: iter(filesmock._appended)
-        filesmock.__contains__.side_effect = lambda: (filesmock._appended.__contains__)
+        filesmock.__contains__.side_effect = lambda: filesmock._appended.__contains__
+        filesmock.__getitem__.side_effect = lambda *args, **kwargs: filesmock._appended.__getitem__(*args, **kwargs)
         return filesmock
 
     return _filesmock
