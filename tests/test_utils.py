@@ -18,6 +18,9 @@ from include_configuration_stubs.utils import (
     get_repo_from_url,
     is_main_website,
     make_file_unique,
+    get_html_title,
+    get_md_title,
+    get_title,
 )
 
 
@@ -513,3 +516,51 @@ def test_make_file_unique(
     make_file_unique(file, files)
     assert file.src_path == expected_output_src_path
     assert file.dest_path == expected_output_dest_path
+
+@pytest.mark.parametrize(
+    "content, expected_output",
+    [
+        ("<html><body><h1>Example Title</h1></body></html>", "Example Title"),  # one_title
+        ("<html><body><h1>Example <b>Title</b></h1></body></html>", "Example Title"),  # special_characters
+        ("<html><body><h1>First Title</h1><h1>Second Title</h1></body></html>", "First Title"),  # multiple_titles
+        ("<html><body><h2>First Title</h2></body></html>", None),  # no_title
+        ("<html><body><!-- <h1>First Title</h1> --></body></html>", None),  # commented_title
+        
+    ],
+    ids=[
+        "one_title",
+        "special_characters",
+        "multiple_titles",
+        "no_title",
+        "commented_title",
+    ],
+)
+def test_get_html_title(content, expected_output):
+    """
+    Test the get_html_title function.
+    """
+    assert get_html_title(content) == expected_output
+
+@pytest.mark.parametrize(
+    "content, expected_output",
+    [
+        ("# Example Title \n Other text", "Example Title"),  # one_title
+        ("# Example `Title` \n Other text", "Example Title"),  # special_characters
+        ("# First Title \n Other text \n # Other title", "First Title"),  # multiple_titles
+        ("## No title \n Other text", None),  # no_title
+        ("<!--  # Title --> \n Text", None),  # commented_title
+        
+    ],
+    ids=[
+        "one_title",
+        "special_characters",
+        "multiple_titles",
+        "no_title",
+        "commented_title",
+    ],
+)
+def test_get_md_title(content, expected_output):
+    """
+    Test the get_md_title function.
+    """
+    assert get_md_title(content) == expected_output

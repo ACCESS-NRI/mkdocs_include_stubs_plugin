@@ -7,10 +7,13 @@ import json
 import re
 import shutil
 import subprocess
+from markdown.extensions.toc import TocExtension
+from markdown import Markdown
 from collections import namedtuple
 from functools import partial
 from typing import Sequence
 from itertools import count
+from bs4 import BeautifulSoup
 
 from mkdocs.structure.files import File, Files
 from include_configuration_stubs.config import GitRefType
@@ -134,7 +137,8 @@ def get_config_stub(
     )
     command = ["curl", "-s", raw_file_url]
     content = get_command_output(command)
-    return ConfigStub(fname = file_name, content = content, title = None)
+    title = get_title(file_name, content)
+    return ConfigStub(fname = file_name, content = content, title = title)
 
 
 def get_remote_repo() -> str:
@@ -271,3 +275,59 @@ def make_file_unique(file: File, files: Files) -> None:
                 file.dest_path = new_dest
                 # Log warning if the file name was changed
                 break
+
+def get_html_title(content: str) -> str | None:
+    """
+    Get the title of a HTML file from its content.
+    Args:
+        content: str
+            The content of the HTML file.
+    Returns:
+        str or None
+            The title of the HTML file. 
+            Returns None if no title is found.
+    """
+    soup = BeautifulSoup(content, "html.parser")
+    h1 = soup.find("h1")
+    return h1.get_text() if h1 else None
+
+def get_md_title(content: str) -> str | None:
+    """
+    Get the title of a MarkDown file from its content.
+    Args:
+        content: str
+            The content of the MarkDown file.
+    Returns:
+        str or None
+            The title of the MarkDown file. 
+            Returns None if no title is found.
+    """
+    md = Markdown(extensions=[TocExtension(toc_depth="1")])
+    md.convert(content)
+    toc_tokens = md.toc_tokens
+
+    if toc_tokens:
+        return toc_tokens[0]['name']  # First h1-level heading
+    return None
+
+def get_title(path: str, content: str) -> str | None:
+    """
+    Get the title of a HTML or MarkDown file from its path and content.
+
+    Args:
+        path: Str
+            The path to the file.
+        content: Str
+            The content of the file.
+
+    Returns:
+        Str
+            The title of the file.
+            Returns None if no title is found.
+    """
+    if path.endswith(".html"):
+        return get_html_title(content)
+    elif path.endswith(".md"):
+        return get_md_title(content)
+    else:
+        raise ValueError(f"Unsupported file type for '{path}'.")
