@@ -7,6 +7,7 @@ import json
 import re
 import shutil
 import subprocess
+import requests
 from markdown.extensions.toc import TocExtension
 from markdown import Markdown
 from collections import namedtuple
@@ -93,6 +94,90 @@ def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[str]:
     refs = output.split()[::2]
     return refs
 
+def get_config_stub_fname(ref: str, repo: str, stub_dir: str, supported_file_formats: tuple[str, ...]) -> Optional[str]:
+    """
+    Get the name of the configuration stub file from the GitHub repository.
+    If the given git ref includes the specified stub_dir containing exactly one
+    file in a supported format, return the stub name.
+
+    Args:
+        ref: Str
+            The git SHA.
+        repo: Str
+            The GitHub Repository in the format OWNER/REPO.
+        stub_dir: Str
+            Path to the directory expected to contain the config stub in a supported format.
+        supported_file_formats: Tuple of Str
+            Tuple of supported file formats.
+    
+    Returns:
+        Str
+            The configuration stub filename.
+    """
+    api_url = f"https://api.github.com/repos/{repo}/contents/{stub_dir}"
+    params = {"ref": ref}
+    try:
+        resp = requests.get(api_url, params=params)
+        resp.raise_for_status()
+        entries = resp.json()
+    except (requests.RequestException):
+        return None
+    stubs = [
+        e['name']
+        for e in entries
+        for suffix in supported_file_formats
+        if e['name'].endswith(suffix)
+    ]
+    if len(stubs) != 1:
+        return None
+    return stubs[0]
+
+def get_config_stub_content(ref: str, repo: str, stub_dir: str, fname: str) -> Optional[str]:
+    """
+    Get the content of the configuration stub from the GitHub repository.
+
+    Args:
+        ref: Str
+            The git SHA.
+        repo: Str
+            The GitHub Repository in the format OWNER/REPO.
+        stub_dir: Str
+            Path to the directory expected to contain the config stub in a supported format.
+        fname: Str
+            The name of the configuration stub file.
+    
+    Returns:
+        Str
+            The configuration stub content.
+    """
+    raw_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{stub_dir}/{fname}"
+    try:
+        raw_resp = requests.get(raw_url)
+        raw_resp.raise_for_status()
+        return raw_resp.text
+    except requests.RequestException:
+        return None
+
+
+def get_config_stub_title(path: str, content: str) -> Optional[str]:
+    """
+    Get the title of a HTML or MarkDown file from its path and content.
+
+    Args:
+        path: Str
+            The path to the file.
+        content: Str
+            The content of the file.
+
+    Returns:
+        Str
+            The title of the file.
+            Returns None if no title is found.
+    """
+    if path.endswith(".html"): # html
+        return get_html_title(content)
+    else: # markdown
+        return get_md_title(content)
 
 def get_config_stub(
     ref: str,
@@ -101,9 +186,7 @@ def get_config_stub(
     supported_file_formats: tuple[str, ...],
 ) -> Optional[ConfigStub]:
     """
-    If the given git ref includes the specified stub_dir containing exactly one
-    file in a supported format, return the ConfigStub namedtuple with the stub name, 
-    content and title.
+    Get the config stub name, content and title formatted as a ConfigStub namedtuple.
 
     Args:
         ref: Str
@@ -117,38 +200,19 @@ def get_config_stub(
 
     Returns:
         ConfigStub
-            If the path exists at the given ref and contains exactly one supported
-            document file, a ConfigStub namedtuple is returned.
-            None is returned otherwise.
+            The ConfigStub namedtuple containing the config stub name, content and title.
     """
-    url = f"https://api.github.com/repos/{repo}/contents/{stub_dir}?ref={ref}"
-    command = ["curl", "-s", url]
-    output = get_command_output(command)
-    try:
-        json_object = json.loads(output)
-    except json.JSONDecodeError:
+    # Get stub filename
+    stub_name = get_config_stub_fname(ref, repo, stub_dir, supported_file_formats)
+    if stub_name is None:
         return None
-    # Get the filename of the stub
-    if not isinstance(json_object, list): # Object is the error 404 one
+    # Get stub content
+    stub_content = get_config_stub_content(ref, repo, stub_dir, stub_name)
+    if stub_content is None:
         return None
-    stubs = [
-        jo['name']
-        for jo in json_object
-        for suffix in supported_file_formats
-        if jo['name'].endswith(suffix)
-    ]
-    if len(stubs) != 1:
-        return None
-    file_name = stubs[0]
-    # Get content of the stub
-    raw_file_url = (
-        f"https://raw.githubusercontent.com/{repo}/{ref}/{stub_dir}/{file_name}"
-    )
-    command = ["curl", "-s", raw_file_url]
-    content = get_command_output(command)
-    # Get the title of the file
-    title = get_title(file_name, content)
-    return ConfigStub(fname = file_name, content = content, title = title)
+    # # Get stub title
+    title = get_config_stub_title(stub_name, stub_content)
+    return ConfigStub(fname=stub_name, content=stub_content, title=title)
 
 def get_remote_repo() -> str:
     """
@@ -318,23 +382,3 @@ def get_md_title(content: str) -> Optional[str]:
     if toc_tokens:
         return toc_tokens[0]['name']  # First h1-level heading
     return None
-
-def get_title(path: str, content: str) -> Optional[str]:
-    """
-    Get the title of a HTML or MarkDown file from its path and content.
-
-    Args:
-        path: Str
-            The path to the file.
-        content: Str
-            The content of the file.
-
-    Returns:
-        Str
-            The title of the file.
-            Returns None if no title is found.
-    """
-    if path.endswith(".html"): # html
-        return get_html_title(content)
-    else: # markdown
-        return get_md_title(content)

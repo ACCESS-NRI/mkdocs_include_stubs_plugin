@@ -4,24 +4,27 @@ from subprocess import CalledProcessError
 from unittest.mock import MagicMock, patch
 
 import pytest
+from requests import RequestException
 
-from include_configuration_stubs.plugin import SUPPORTED_FILE_FORMATS
 from include_configuration_stubs.config import GitRefType
+from include_configuration_stubs.plugin import SUPPORTED_FILE_FORMATS
 from include_configuration_stubs.utils import (
     ConfigStub,
     append_number_to_file_name,
     check_is_installed,
     get_command_output,
     get_config_stub,
+    get_config_stub_content,
+    get_config_stub_fname,
+    get_config_stub_title,
     get_git_refs,
+    get_html_title,
+    get_md_title,
     get_remote_repo,
     get_repo_from_input,
     get_repo_from_url,
     is_main_website,
     make_file_unique,
-    get_html_title,
-    get_md_title,
-    get_title,
 )
 
 
@@ -92,76 +95,54 @@ def test_get_git_refs(fp, ref_type):
 
 
 @pytest.mark.parametrize(
-    "output_json, expected_file_name",
+    "response_json, response_raise, expected_output",
     [
-        ("Not a json", None), # not_json
-        ("", None), # empty
         (
-            r"""{
-            "message": "Not Found",
-            "documentation_url": "https://docs.github.com/rest/repos/contents#get-repository-content",
-            "status": "404"
-            }""",
             None,
-        ), # not_found
-        (
-            r"""[
-            {
-                "name": "name_without_extensionmd"
-            },
-            {
-                "name": "name_without_extensionhtml"
-            },
-            {
-                "name": "name_with_other_extension.jpg"
-            }
-            ]""",
+            True,
             None,
-        ), # no_extension
+        ),  # requests_error
         (
-            r"""[
-            {
-            "name": "name_with_extension.md"
-            },
-            {
-            "name": "name_with_not_supported_extension.jpg"
-            }
-            ]""",
+            [
+                {"name": "name_without_extensionmd"},
+                {"name": "name_without_extensionhtml"},
+                {"name": "name_with_other_extension.jpg"},
+            ],
+            False,
+            None,
+        ),  # no_extension
+        (
+            [
+                {"name": "name_with_extension.md"},
+                {"name": "name_with_not_supported_extension.jpg"},
+            ],
+            False,
             "name_with_extension.md",
-        ), # multiple_files_valid
+        ),  # multiple_files_valid
         (
-            r"""[
-            {
-            "name": "name_with_extension.md"
-            },
-            {
-            "name": "name_with_supported_extension.html"
-            }
-            ]""",
+            [
+                {"name": "name_with_extension.md"},
+                {"name": "name_with_supported_extension.html"},
+            ],
+            False,
             None,
-        ), # multiple_supported_files
+        ),  # multiple_supported_files
         (
-            r"""[
-            {
-            "name": "name_with_extension.md"
-            },
-            {
-            "name": "name_with_supported_extension.md"
-            }
-            ]""",
+            [
+                {"name": "name_with_extension.md"},
+                {"name": "name_with_supported_extension.md"},
+            ],
+            False,
             None,
-        ), # same_supported_files
+        ),  # same_supported_files
         (
-            r"""[{
-            "name": "name_with_extension.html"
-            }]""",
+            [{"name": "name_with_extension.html"}],
+            False,
             "name_with_extension.html",
-        ), # single_file
+        ),  # single_file
     ],
     ids=[
-        "not_json",
-        "empty",
-        "not_found",
+        "requests_error",
         "no_extension",
         "multiple_files_valid",
         "multiple_supported_files",
@@ -169,29 +150,125 @@ def test_get_git_refs(fp, ref_type):
         "single_file",
     ],
 )
-@patch("include_configuration_stubs.utils.get_title")
-def test_get_config_stub(mock_get_title, fp, output_json, expected_file_name):
-    """Test the get_config_stub function."""
-    file_content = "Example file content"
-    file_title = "Example title"
-    mock_get_title.return_value = file_title
+@patch("include_configuration_stubs.utils.requests.get")
+def test_get_config_stub_fname(
+    mock_requests_get, response_json, response_raise, expected_output
+):
+    """Test the get_config_stub_fname function."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = response_json
+    if response_raise:
+        mock_response.raise_for_status.side_effect = RequestException
+    else:
+        mock_response.raise_for_status.side_effect = None
+    mock_requests_get.return_value = mock_response
     ref = "sha1234567"
     repo = "owner/repo"
     path = "config/path"
-    url = f"https://api.github.com/repos/{repo}/contents/{path}?ref={ref}"
-    raw_url = (
-        f"https://raw.githubusercontent.com/{repo}/{ref}/{path}/{expected_file_name}"
+    assert (
+        get_config_stub_fname(ref, repo, path, SUPPORTED_FILE_FORMATS)
+        == expected_output
     )
-    command1 = ["curl", "-s", url]
-    command2 = ["curl", "-s", raw_url]
-    fp.register(command1, stdout=output_json)
-    fp.register(command2, stdout=file_content)
-    expected_output = (
-        ConfigStub(fname=expected_file_name, content=file_content, title=file_title)
-        if expected_file_name
-        else None
-    )
+
+
+@pytest.mark.parametrize(
+    "fname_output, content_output, title_output, expected_output",
+    [
+        (
+            "example_name",
+            "Example file content",
+            "Example title",
+            ConfigStub(
+                fname="example_name",
+                content="Example file content",
+                title="Example title",
+            ),
+        ),  # valid
+        (
+            None,
+            "Example file content",
+            "Example title",
+            None,
+        ),  # no_fname
+        (
+            "example_name",
+            None,
+            "Example title",
+            None,
+        ),  # no_content
+        (
+            "example_name",
+            "Example file content",
+            None,
+            ConfigStub(
+                fname="example_name",
+                content="Example file content",
+                title=None,
+            ),
+        ),  # no_title
+    ],
+    ids=[
+        "valid",
+        "no_fname",
+        "no_content",
+        "no_title",
+    ],
+)
+@patch("include_configuration_stubs.utils.get_config_stub_fname")
+@patch("include_configuration_stubs.utils.get_config_stub_content")
+@patch("include_configuration_stubs.utils.get_config_stub_title")
+def test_get_config_stub(
+    mock_get_title,
+    mock_get_content,
+    mock_get_fname,
+    fname_output,
+    content_output,
+    title_output,
+    expected_output,
+):
+    """Test the get_config_stub function."""
+    mock_get_fname.return_value = fname_output
+    mock_get_content.return_value = content_output
+    mock_get_title.return_value = title_output
+    ref = "sha1234567"
+    repo = "owner/repo"
+    path = "config/path"
     assert get_config_stub(ref, repo, path, SUPPORTED_FILE_FORMATS) == expected_output
+
+
+@pytest.mark.parametrize(
+    "response_text, response_raise, expected_output",
+    [
+        (
+            "example text",
+            False,
+            "example text",
+        ),  # valid
+        (
+            "example text",
+            True,
+            None,
+        ),  # response_error
+    ],
+    ids=["valid", "response_error"],
+)
+@patch("include_configuration_stubs.utils.requests.get")
+def test_get_config_stub_content(
+    mock_response_get, response_text, response_raise, expected_output
+):
+    """Test the get_config_stub_content function."""
+    mock_response = MagicMock()
+    mock_response.text = response_text
+    if response_raise:
+        mock_response.raise_for_status.side_effect = RequestException
+    else:
+        mock_response.raise_for_status.side_effect = None
+    mock_response_get.return_value = mock_response
+    ref = "sha1234567"
+    repo = "owner/repo"
+    path = "config/path"
+    fname = "example_name"
+    assert get_config_stub_content(ref, repo, path, fname) == expected_output
 
 
 def test_get_remote_repo(fp):
@@ -547,15 +624,27 @@ def test_make_file_unique(
     assert file.src_path == expected_output_src_path
     assert file.dest_path == expected_output_dest_path
 
+
 @pytest.mark.parametrize(
     "content, expected_output",
     [
-        ("<html><body><h1>Example Title</h1></body></html>", "Example Title"),  # one_title
-        ("<html><body><h1>Example <b>Title</b></h1></body></html>", "Example Title"),  # special_characters
-        ("<html><body><h1>First Title</h1><h1>Second Title</h1></body></html>", "First Title"),  # multiple_titles
+        (
+            "<html><body><h1>Example Title</h1></body></html>",
+            "Example Title",
+        ),  # one_title
+        (
+            "<html><body><h1>Example <b>Title</b></h1></body></html>",
+            "Example Title",
+        ),  # special_characters
+        (
+            "<html><body><h1>First Title</h1><h1>Second Title</h1></body></html>",
+            "First Title",
+        ),  # multiple_titles
         ("<html><body><h2>First Title</h2></body></html>", None),  # no_title
-        ("<html><body><!-- <h1>First Title</h1> --></body></html>", None),  # commented_title
-        
+        (
+            "<html><body><!-- <h1>First Title</h1> --></body></html>",
+            None,
+        ),  # commented_title
     ],
     ids=[
         "one_title",
@@ -571,15 +660,18 @@ def test_get_html_title(content, expected_output):
     """
     assert get_html_title(content) == expected_output
 
+
 @pytest.mark.parametrize(
     "content, expected_output",
     [
         ("# Example Title \n Other text", "Example Title"),  # one_title
         ("# Example `Title` \n Other text", "Example Title"),  # special_characters
-        ("# First Title \n Other text \n # Other title", "First Title"),  # multiple_titles
+        (
+            "# First Title \n Other text \n # Other title",
+            "First Title",
+        ),  # multiple_titles
         ("## No title \n Other text", None),  # no_title
         ("<!--  # Title --> \n Text", None),  # commented_title
-        
     ],
     ids=[
         "one_title",
@@ -595,6 +687,7 @@ def test_get_md_title(content, expected_output):
     """
     assert get_md_title(content) == expected_output
 
+
 @patch(
     "include_configuration_stubs.utils.get_html_title",
     return_value="html",
@@ -603,9 +696,9 @@ def test_get_md_title(content, expected_output):
     "include_configuration_stubs.utils.get_md_title",
     return_value="md",
 )
-def test_get_title(path, expected_output):
+def test_get_config_stub_title(path, expected_output):
     """
-    Test the get_title function.
+    Test the get_config_stub_title function.
     """
-    assert get_title("some/path.html", "example_content") == "html"
-    assert get_title("some/other/path.md","example_content") == "md"
+    assert get_config_stub_title("some/path.html", "example_content") == "html"
+    assert get_config_stub_title("some/other/path.md", "example_content") == "md"
