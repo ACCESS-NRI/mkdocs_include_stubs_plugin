@@ -2,11 +2,15 @@
 
 ## About
 Mkdocs plugin to include configuration _stubs_ within the build of a website for multiple branches within an ACCESS-NRI config repo.
-A configuration _stub_ consists of a single file, in one of the `supported_file_formats`.
+A configuration _stub_ consists of a single file in one of the [supported file formats](#supported_file_formats).
 
 This plugin adds files to the website structure using the `on_files` mkdocs hook. 
 Make sure you include this plugin in the `mkdocs.yml` file before any other plugin that uses included files (for example the `macros` plugin), if you want the
 files included by this plugin to be processed by the other plugins.
+
+### Supported file formats
+    - MarkDown (`.md`)
+    - HTML (`.html`)
 
 ## Requirements
 In addition to the requirements specified in the `pyproject.toml` file, this plugin requires and uses the following executables:
@@ -50,11 +54,11 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
         Default value is `false`.
 - `stubs_dir`
     Path to the directory containing the configuration stubs, relative to the root of the repository.
-    This directory needs to contain **one single file** in one of the `supported_file_formats` for each configuration.
-    When filtering the _Git_ refs for configurations to be included, the following will be ignored:
-    - Refs that do not contain this `stubs_dir` path
-    - Refs whose `stubs_dir` contain multiple files
-    - Refs whose `stubs_dir` contain a single file in a non-supported format
+    For each configuration, the `stubs_dir` must contain  **exactly one file** in one of the [supported file formats](#supported_file_formats). It may also include other files or directories, as long as only **one file** matches a supported format.
+    When filtering the _Git_ refs to determine which configurations to include, the following are **excluded**:
+    - Refs that do not contain the `stubs_dir` path
+    - Refs whose `stubs_dir` contains **multiple files** of the same [supported file format](#supported_file_formats)
+    - Refs whose `stubs_dir` contains files from **multiple** [supported file format](#supported_file_formats)
     Default value is `documentation`.
 - `stubs_parent_url`
     Parent url path relative to the root url (`site_url`) for the configuration stubs.
@@ -68,10 +72,6 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
     replacing undersores with spaces.
     For example, a `stubs_parent_url` set to `custom/navigation/configuration_stubs` becomes `Custom/Navigation/Configuration stubs`, 
     placing the configuration stubs inside the `Configuration stubs` subsection, within the `Navigation` navigation section, under the top-level `Custom` Section.
-- `supported_file_formats`
-    List of file extensions (including the dot) which represent the supported formats for the
-    files in `stubs_dir`.
-    Default value is [`.md`, `.html`] (MarkDown and HTML).
 
 ## Lincense
 Apache Software License 2.0

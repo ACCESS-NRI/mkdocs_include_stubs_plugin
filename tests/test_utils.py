@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from include_configuration_stubs.plugin import SUPPORTED_FILE_FORMATS
 from include_configuration_stubs.config import GitRefType
 from include_configuration_stubs.utils import (
     ConfigStub,
@@ -93,7 +94,8 @@ def test_get_git_refs(fp, ref_type):
 @pytest.mark.parametrize(
     "output_json, expected_file_name",
     [
-        ("", None),
+        ("Not a json", None), # not_json
+        ("", None), # empty
         (
             r"""{
             "message": "Not Found",
@@ -101,53 +103,81 @@ def test_get_git_refs(fp, ref_type):
             "status": "404"
             }""",
             None,
-        ),
-        (
-            r"""[{
-            "name": "name_without_extensionmd"
-            }]""",
-            None,
-        ),
+        ), # not_found
         (
             r"""[
             {
-            "name": "name_without_extensionmd"
+                "name": "name_without_extensionmd"
             },
             {
-            "name": "name_with_extension.md"
+                "name": "name_without_extensionhtml"
+            },
+            {
+                "name": "name_with_other_extension.jpg"
             }
             ]""",
             None,
-        ),
+        ), # no_extension
         (
-            r"""[{
+            r"""[
+            {
             "name": "name_with_extension.md"
-            }]""",
+            },
+            {
+            "name": "name_with_not_supported_extension.jpg"
+            }
+            ]""",
             "name_with_extension.md",
-        ),
+        ), # multiple_files_valid
+        (
+            r"""[
+            {
+            "name": "name_with_extension.md"
+            },
+            {
+            "name": "name_with_supported_extension.html"
+            }
+            ]""",
+            None,
+        ), # multiple_supported_files
+        (
+            r"""[
+            {
+            "name": "name_with_extension.md"
+            },
+            {
+            "name": "name_with_supported_extension.md"
+            }
+            ]""",
+            None,
+        ), # same_supported_files
         (
             r"""[{
             "name": "name_with_extension.html"
             }]""",
             "name_with_extension.html",
-        ),
+        ), # single_file
     ],
     ids=[
+        "not_json",
         "empty",
         "not_found",
         "no_extension",
-        "multiple_files",
-        "single_file_md",
-        "single_file_html",
+        "multiple_files_valid",
+        "multiple_supported_files",
+        "same_supported_files",
+        "single_file",
     ],
 )
-def test_get_config_stub(fp, output_json, expected_file_name):
+@patch("include_configuration_stubs.utils.get_title")
+def test_get_config_stub(mock_get_title, fp, output_json, expected_file_name):
     """Test the get_config_stub function."""
-    example_file_content = "Example file content" if expected_file_name else None
+    file_content = "Example file content"
+    file_title = "Example title"
+    mock_get_title.return_value = file_title
     ref = "sha1234567"
     repo = "owner/repo"
     path = "config/path"
-    supported_file_formats = (".md", ".html")
     url = f"https://api.github.com/repos/{repo}/contents/{path}?ref={ref}"
     raw_url = (
         f"https://raw.githubusercontent.com/{repo}/{ref}/{path}/{expected_file_name}"
@@ -155,13 +185,13 @@ def test_get_config_stub(fp, output_json, expected_file_name):
     command1 = ["curl", "-s", url]
     command2 = ["curl", "-s", raw_url]
     fp.register(command1, stdout=output_json)
-    fp.register(command2, stdout=example_file_content)
+    fp.register(command2, stdout=file_content)
     expected_output = (
-        ConfigStub(fname=expected_file_name, content=example_file_content, title=None)
+        ConfigStub(fname=expected_file_name, content=file_content, title=file_title)
         if expected_file_name
         else None
     )
-    assert get_config_stub(ref, repo, path, supported_file_formats) == expected_output
+    assert get_config_stub(ref, repo, path, SUPPORTED_FILE_FORMATS) == expected_output
 
 
 def test_get_remote_repo(fp):
@@ -564,3 +594,18 @@ def test_get_md_title(content, expected_output):
     Test the get_md_title function.
     """
     assert get_md_title(content) == expected_output
+
+@patch(
+    "include_configuration_stubs.utils.get_html_title",
+    return_value="html",
+)
+@patch(
+    "include_configuration_stubs.utils.get_md_title",
+    return_value="md",
+)
+def test_get_title(path, expected_output):
+    """
+    Test the get_title function.
+    """
+    assert get_title("some/path.html", "example_content") == "html"
+    assert get_title("some/other/path.md","example_content") == "md"

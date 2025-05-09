@@ -7,6 +7,11 @@ import pytest
 from include_configuration_stubs.plugin import IncludeConfigurationStubsPlugin
 from include_configuration_stubs.utils import ConfigStub
 
+@pytest.fixture
+def mock_mkdocs_config():
+    mkdocs_config = MagicMock()
+    mkdocs_config.get.return_value = None
+    return mkdocs_config
 
 @pytest.fixture
 def mock_plugin_config():
@@ -24,7 +29,6 @@ def mock_plugin_config():
         },
         "stubs_dir": "stubs_dir",
         "stubs_parent_url": "parent/url/",
-        "supported_file_formats": [".md", ".extension"],
     }
 
 
@@ -41,7 +45,7 @@ def create_plugin(mock_plugin_config):
 
     return _plugin
 
-def test_on_config(create_plugin, mock_plugin_config):
+def test_on_config(create_plugin, mock_mkdocs_config):
     """Test the on_config method of the plugin."""
     plugin = create_plugin()
     with patch(
@@ -49,7 +53,7 @@ def test_on_config(create_plugin, mock_plugin_config):
     ) as mock_get_repo:
         output_repo = "example_output_repo"
         mock_get_repo.return_value = output_repo
-        plugin.on_config(mock_plugin_config)
+        plugin.on_config(mock_mkdocs_config)
         # Check that the repo is set correctly
         assert plugin.repo == output_repo
 
@@ -130,7 +134,7 @@ def test_get_git_refs_for_wesbsite_preview_no_main_false(
 @pytest.mark.parametrize(
     "config_stub_output",
     [
-        ConfigStub(fname="key", content="value", title=None), # valid_config_stub
+        ConfigStub(fname="key", content="value", title="title"), # valid_config_stub
         None, # None_config_stub
     ],
     ids= [
@@ -139,27 +143,34 @@ def test_get_git_refs_for_wesbsite_preview_no_main_false(
     ],
 )
 @patch("include_configuration_stubs.plugin.get_config_stub")
-@patch("include_configuration_stubs.plugin.get_supported_file_formats")
-def test_on_files_adds_stub_file(
-    mock_get_supported_file_formats,
+def test_on_files(
     mock_get_config_stub,
     config_stub_output,
     create_plugin,
     mock_files,
+    mock_mkdocs_config,
 ):
     """Test the on_files method."""
     files = mock_files()
-    mkdocs_config = MagicMock()
     plugin = create_plugin(repo="example_repo")
     plugin.get_git_refs_for_wesbsite = MagicMock(return_value={"ref1", "ref2"})
     mock_get_config_stub.return_value = config_stub_output
-    result_files = plugin.on_files(files, mkdocs_config)
+    result_files = plugin.on_files(files, mock_mkdocs_config)
     expected_len = 0 if config_stub_output is None else 2
+    # Check that the config stubs were added to the files
     assert len(result_files) == expected_len
+    # Check that the config stub page were added to the pages
+    assert len(plugin.pages) == expected_len
     if config_stub_output is not None:
+        # Check correctness of config stubs
         assert result_files[0].src_uri == config_stub_output.fname
         assert result_files[0]._content == config_stub_output.content
         assert result_files[0].dest_path.startswith("parent/url/")
         assert result_files[1].src_uri == config_stub_output.fname + "1"
         assert result_files[1]._content == config_stub_output.content
         assert result_files[1].dest_path.startswith("parent/url1/")
+        # Check correctness of pages
+        assert plugin.pages[0].file == result_files[0]
+        assert plugin.pages[1].file == result_files[1]
+        assert plugin.pages[0].title == config_stub_output.title
+        assert plugin.pages[1].title == config_stub_output.title

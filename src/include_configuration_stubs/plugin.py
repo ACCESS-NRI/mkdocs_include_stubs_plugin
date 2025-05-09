@@ -2,14 +2,13 @@
 
 import os
 
-from mkdocs.plugins import BasePlugin
+from mkdocs.plugins import BasePlugin, get_plugin_logger
 from mkdocs.structure.files import File, Files
+from mkdocs.structure.pages import Page
 from mkdocs.config.defaults import MkDocsConfig
-from include_configuration_stubs import PLUGIN_NAME
 
 from include_configuration_stubs.config import (
     ConfigScheme,
-    get_supported_file_formats,
     set_default_stubs_nav_path,
 )
 from include_configuration_stubs.utils import (
@@ -20,6 +19,8 @@ from include_configuration_stubs.utils import (
     make_file_unique,
 )
 
+logger = get_plugin_logger(__name__)
+SUPPORTED_FILE_FORMATS = (".md", ".html")
 
 class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
     def on_config(self, config: MkDocsConfig) -> MkDocsConfig:
@@ -30,7 +31,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         is_build_for_main_website = is_main_website(
             self.config["main_website"]["branch"], self.repo
         )
-        print(f"{PLUGIN_NAME}: building for {'main' if is_build_for_main_website else 'preview'} website.")
+        logger.info(f"Building for {'main' if is_build_for_main_website else 'preview'} website.")
         preview_website_config = self.config["preview_website"]
         main_website_config = self.config["main_website"]
         website_config = main_website_config if is_build_for_main_website else preview_website_config
@@ -56,22 +57,19 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         """
         Dynamically add congiguration stubs to the MkDocs files list.
         """
+        self.pages = []
         # Get the git refs for the website
         refs = self.get_git_refs_for_wesbsite()
         
         stubs_dir = self.config["stubs_dir"]
         stubs_parent_url = self.config["stubs_parent_url"]
-        # Get the supported file formats
-        supported_file_formats = get_supported_file_formats(
-            self.config["supported_file_formats"]
-        )
         # For each ref, add its configuration stubs to the site, if present
         for ref in refs:
             config_stub = get_config_stub(
                 ref,
                 self.repo,
                 stubs_dir,
-                supported_file_formats,
+                SUPPORTED_FILE_FORMATS,
             )
             if config_stub is not None:
                 #  Create the configuration stub file
@@ -88,6 +86,14 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
                 make_file_unique(config_stub_file, files)
                 #  Include the configuration stub file to the site
                 files.append(config_stub_file)
+                #  Create a page for the configuration stub file
+                self.pages.append(
+                    Page(
+                        config=config,
+                        title=config_stub.title or config_stub_file.src_uri.capitalize(),
+                        file=config_stub_file,
+                    )
+                )
         return files
 
     def on_nav(self, nav, config, files):

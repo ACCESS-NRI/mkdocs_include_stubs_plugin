@@ -11,7 +11,7 @@ from markdown.extensions.toc import TocExtension
 from markdown import Markdown
 from collections import namedtuple
 from functools import partial
-from typing import Sequence
+from typing import Sequence, Optional
 from itertools import count
 from bs4 import BeautifulSoup
 
@@ -99,10 +99,11 @@ def get_config_stub(
     repo: str,
     stub_dir: str,
     supported_file_formats: tuple[str, ...],
-) -> ConfigStub | None:
+) -> Optional[ConfigStub]:
     """
-    If the given git ref includes the specified stub_dir containing
-    one file in a supported fortmat, return a dictionary with the name and content of the file.
+    If the given git ref includes the specified stub_dir containing exactly one
+    file in a supported format, return the ConfigStub namedtuple with the stub name, 
+    content and title.
 
     Args:
         ref: Str
@@ -115,7 +116,7 @@ def get_config_stub(
             Tuple of supported file formats.
 
     Returns:
-        ConfigStub | None
+        ConfigStub
             If the path exists at the given ref and contains exactly one supported
             document file, a ConfigStub namedtuple is returned.
             None is returned otherwise.
@@ -127,19 +128,27 @@ def get_config_stub(
         json_object = json.loads(output)
     except json.JSONDecodeError:
         return None
-    if len(json_object) != 1:
+    # Get the filename of the stub
+    if not isinstance(json_object, list): # Object is the error 404 one
         return None
-    file_name = json_object[0].get("name", "")
-    if not file_name.endswith(supported_file_formats):
+    stubs = [
+        jo['name']
+        for jo in json_object
+        for suffix in supported_file_formats
+        if jo['name'].endswith(suffix)
+    ]
+    if len(stubs) != 1:
         return None
+    file_name = stubs[0]
+    # Get content of the stub
     raw_file_url = (
         f"https://raw.githubusercontent.com/{repo}/{ref}/{stub_dir}/{file_name}"
     )
     command = ["curl", "-s", raw_file_url]
     content = get_command_output(command)
+    # Get the title of the file
     title = get_title(file_name, content)
     return ConfigStub(fname = file_name, content = content, title = title)
-
 
 def get_remote_repo() -> str:
     """
@@ -169,7 +178,7 @@ def get_repo_from_url(repo_url: str) -> str:
     raise ValueError(f"Invalid GitHub repo URL: '{repo_url}'")
 
 
-def get_repo_from_input(repo_config_input: str | None) -> str:
+def get_repo_from_input(repo_config_input: Optional[str]) -> str:
     """
     Return the GitHub repository in the format 'OWNER/REPO'.
 
@@ -178,7 +187,7 @@ def get_repo_from_input(repo_config_input: str | None) -> str:
     or a direct 'OWNER/REPO' input.
 
     Args:
-        repo_config_input: Str or None
+        repo_config_input: Str
             The input repository string, or None to auto-detect.
 
     Returns:
@@ -276,14 +285,14 @@ def make_file_unique(file: File, files: Files) -> None:
                 # Log warning if the file name was changed
                 break
 
-def get_html_title(content: str) -> str | None:
+def get_html_title(content: str) -> Optional[str]:
     """
     Get the title of a HTML file from its content.
     Args:
-        content: str
+        content: Str
             The content of the HTML file.
     Returns:
-        str or None
+        Str
             The title of the HTML file. 
             Returns None if no title is found.
     """
@@ -291,14 +300,14 @@ def get_html_title(content: str) -> str | None:
     h1 = soup.find("h1")
     return h1.get_text() if h1 else None
 
-def get_md_title(content: str) -> str | None:
+def get_md_title(content: str) -> Optional[str]:
     """
     Get the title of a MarkDown file from its content.
     Args:
-        content: str
+        content: Str
             The content of the MarkDown file.
     Returns:
-        str or None
+        Str or None
             The title of the MarkDown file. 
             Returns None if no title is found.
     """
@@ -310,7 +319,7 @@ def get_md_title(content: str) -> str | None:
         return toc_tokens[0]['name']  # First h1-level heading
     return None
 
-def get_title(path: str, content: str) -> str | None:
+def get_title(path: str, content: str) -> Optional[str]:
     """
     Get the title of a HTML or MarkDown file from its path and content.
 
@@ -325,9 +334,7 @@ def get_title(path: str, content: str) -> str | None:
             The title of the file.
             Returns None if no title is found.
     """
-    if path.endswith(".html"):
+    if path.endswith(".html"): # html
         return get_html_title(content)
-    elif path.endswith(".md"):
+    else: # markdown
         return get_md_title(content)
-    else:
-        raise ValueError(f"Unsupported file type for '{path}'.")

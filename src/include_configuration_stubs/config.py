@@ -11,7 +11,6 @@ DEFAULT_PATTERN_PREVIEW_WEBSITE = r"dev-*"
 DEFAULT_STUBS_DIR_PATH = "documentation"
 DEFAULT_MAIN_WEBSITE_BRANCH = "main"
 DEFAULT_STUBS_WEBSITE_DIR_PATH = "configurations"
-DEFAULT_SUPPORTED_FILE_FORMATS = [".md", ".html"]
 
 
 class GitRefType(StrEnum):
@@ -75,27 +74,6 @@ class ConfigScheme(Config):
         str,
         default="",
     )
-    supported_file_formats = opt.Type(
-        (str, list),
-        default=DEFAULT_SUPPORTED_FILE_FORMATS,
-    )
-
-
-def get_supported_file_formats(file_formats: str | list) -> tuple[str, ...]:
-    """
-    Get the supported file formats from the given string.
-
-    Args:
-        file_formats: Str
-            The string containing the supported file formats.
-
-    Returns:
-        Tuple of Str
-            A tuple of supported file formats.
-    """
-    if isinstance(file_formats, str):
-        file_formats = [file_formats]
-    return tuple(file_formats)
 
 
 def set_default_stubs_nav_path(stubs_parent_url: str) -> str:
