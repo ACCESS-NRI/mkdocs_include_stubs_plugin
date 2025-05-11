@@ -56,10 +56,7 @@ class _PreviewWebsiteOptions(Config):
 class ConfigScheme(Config):
     """Configuration for the plugin."""
 
-    repo = opt.Type(
-        str,
-        default=None,
-    )
+    repo = opt.Optional(opt.Type(str))
     main_website = opt.SubConfig(_MainWebsiteOptions)
     preview_website = opt.SubConfig(_PreviewWebsiteOptions)
     stubs_dir = opt.Type(
@@ -70,10 +67,7 @@ class ConfigScheme(Config):
         str,
         default=DEFAULT_STUBS_WEBSITE_DIR_PATH,
     )
-    stubs_nav_path = opt.Type(
-        str,
-        default="",
-    )
+    stubs_nav_path = opt.Optional(opt.Type(str))
 
 
 def set_default_stubs_nav_path(stubs_parent_url: str) -> str:

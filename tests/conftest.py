@@ -1,5 +1,10 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+from mkdocs.structure.nav import Section
+from mkdocs.structure.pages import Page
+
+
 
 @pytest.fixture
 def mock_files():
@@ -13,7 +18,32 @@ def mock_files():
         filesmock.__len__.side_effect = lambda: len(filesmock._appended)
         filesmock.__iter__.side_effect = lambda: iter(filesmock._appended)
         filesmock.__contains__.side_effect = lambda: filesmock._appended.__contains__
-        filesmock.__getitem__.side_effect = lambda *args, **kwargs: filesmock._appended.__getitem__(*args, **kwargs)
+        filesmock.__getitem__.side_effect = (
+            lambda *args, **kwargs: filesmock._appended.__getitem__(*args, **kwargs)
+        )
         return filesmock
 
     return _filesmock
+
+
+@pytest.fixture
+def mock_mkdocs_config():
+    mkdocs_config = MagicMock()
+    mkdocs_config.get.return_value = None
+    return mkdocs_config
+
+
+@pytest.fixture
+def mock_section(mock_mkdocs_config):
+    return Section(
+        title="Root",
+        children=[
+            Page(title="Page1", file=MagicMock(), config=mock_mkdocs_config),
+            Section(
+                title="Subsection",
+                children=[
+                    Page(title="Page2", file=MagicMock(), config=mock_mkdocs_config),
+                ],
+            ),
+        ],
+    )

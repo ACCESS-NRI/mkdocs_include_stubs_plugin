@@ -25,6 +25,9 @@ from include_configuration_stubs.utils import (
     get_repo_from_url,
     is_main_website,
     make_file_unique,
+    set_stubs_nav_path,
+    add_section_hierarchy,
+    add_pages_to_nav,
 )
 
 
@@ -398,11 +401,15 @@ def test_get_repo_from_input_repo_input_invalid(config_input):
         mock_get_repo_from_url.assert_not_called()
 
 
-def test_get_repo_from_input_none_input():
+@pytest.mark.parametrize(
+    "config_input",
+    ["", None],
+    ids=["empty", "none"],
+)
+def test_get_repo_from_input_no_input(config_input):
     """
-    Test the get_repo_from_input function when the input is None.
+    Test the get_repo_from_input function when the input is None or empty.
     """
-    config_input = None
     get_remote_repo_output = "https://github.com/example/repo"
     get_repo_from_url_output = "example/repo"
     with (
@@ -421,11 +428,16 @@ def test_get_repo_from_input_none_input():
         mock_get_repo_from_url.assert_called_with(get_remote_repo_output)
 
 
-def test_get_repo_from_input_none_input_error():
+@pytest.mark.parametrize(
+    "config_input",
+    ["", None],
+    ids=["empty", "none"],
+)
+def test_get_repo_from_input_no_input_error(config_input):
     """
-    Test the get_repo_from_input function when the input is None.
+    Test the get_repo_from_input function when the input is None or empty
+    and get_remote_repo raises an exception.
     """
-    config_input = None
     with (
         patch(
             "include_configuration_stubs.utils.get_remote_repo",
@@ -702,3 +714,81 @@ def test_get_config_stub_title(path, expected_output):
     """
     assert get_config_stub_title("some/path.html", "example_content") == "html"
     assert get_config_stub_title("some/other/path.md", "example_content") == "md"
+
+
+@pytest.mark.parametrize(
+    "path, expected_output",
+    [
+        ("Some/ Path /For/Navigation/", "Some/ Path /For/Navigation"),  # string
+        ("", ""),  # empty
+        (None, "default_output"),  # none
+    ],
+    ids=["string", "empty", "none"],
+)
+@patch("include_configuration_stubs.utils.set_default_stubs_nav_path")
+def test_set_stubs_nav_path(mock_set_default_stubs_nav_path, path, expected_output):
+    """
+    Test the set_stubs_nav_path function.
+    """
+    mock_set_default_stubs_nav_path.return_value = "default_output"
+    assert set_stubs_nav_path(path, "stub") == expected_output
+
+
+def test_add_section_hierarchy(mock_section):
+    """
+    Test the add_section_hierarchy function.
+    """
+    pages = [MagicMock(), MagicMock()]
+    root_section = mock_section
+    titles = ["Section 1", "Section 2"]
+    add_section_hierarchy(root_section.children, titles, pages)
+    assert root_section.children[-1].title == "Section 1"
+    assert root_section.children[-1].children[0].title == "Section 2"
+    assert root_section.children[-1].children[0].children == pages
+
+
+def test_add_section_hierarchy_no_title(mock_section):
+    """
+    Test the add_section_hierarchy function
+    when titles is an empty list.
+    """
+    pages = [MagicMock(), MagicMock()]
+    root_section = mock_section
+    titles = []
+    add_section_hierarchy(root_section.children, titles, pages)
+    assert root_section.children[-2:] == pages
+
+
+def test_add_pages_to_nav_section_present(mock_mkdocs_config, mock_section):
+    """
+    Test the add_pages_to_nav function when the section is present.
+    """
+    pages = [MagicMock(), MagicMock()]
+    nav = MagicMock()
+    nav.items = [mock_section]
+    stubs_nav_path = "Root/Subsection"
+    add_pages_to_nav(nav, pages, stubs_nav_path)
+    assert len(nav.items) == 1
+    assert nav.items[0].title == "Root"
+    assert len(nav.items[0].children) == 2
+    assert nav.items[0].children[1].title == "Subsection"
+    assert len(nav.items[0].children[1].children) == 3
+    assert nav.items[0].children[1].children[-2:] == pages
+
+
+def test_add_pages_to_nav_section_created(mock_mkdocs_config, mock_section):
+    """
+    Test the add_pages_to_nav function when the section needs to be created.
+    """
+    pages = [MagicMock(), MagicMock()]
+    nav = MagicMock()
+    nav.items = [mock_section]
+    stubs_nav_path = "Root/New Section"
+    add_pages_to_nav(nav, pages, stubs_nav_path)
+    assert len(nav.items) == 1
+    assert nav.items[0].title == "Root"
+    assert len(nav.items[0].children) == 3
+    assert nav.items[0].children[1].title == "Subsection"
+    assert nav.items[0].children[2].title == "New Section"
+    assert len(nav.items[0].children[1].children) == 1
+    assert nav.items[0].children[2].children[-2:] == pages
