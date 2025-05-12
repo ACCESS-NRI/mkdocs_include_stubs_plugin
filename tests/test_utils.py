@@ -1,7 +1,7 @@
 # fp is a fixture provided by pytest-subprocess.
 
 from subprocess import CalledProcessError
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, ANY
 
 import pytest
 from requests import RequestException
@@ -26,7 +26,7 @@ from include_configuration_stubs.utils import (
     is_main_website,
     make_file_unique,
     set_stubs_nav_path,
-    add_section_hierarchy,
+    add_navigation_hierarchy,
     add_pages_to_nav,
 )
 
@@ -734,38 +734,37 @@ def test_set_stubs_nav_path(mock_set_default_stubs_nav_path, path, expected_outp
     assert set_stubs_nav_path(path, "stub") == expected_output
 
 
-def test_add_section_hierarchy(mock_section):
+def test_add_navigation_hierarchy(mock_section):
     """
-    Test the add_section_hierarchy function.
+    Test the add_navigation_hierarchy function.
     """
-    pages = [MagicMock(), MagicMock()]
-    root_section = mock_section
+    root_item = mock_section
     titles = ["Section 1", "Section 2"]
-    add_section_hierarchy(root_section.children, titles, pages)
-    assert root_section.children[-1].title == "Section 1"
-    assert root_section.children[-1].children[0].title == "Section 2"
-    assert root_section.children[-1].children[0].children == pages
+    add_navigation_hierarchy(root_item, titles)
+    assert len(root_item.children) == 3
+    assert root_item.children[-1].title == "Section 1"
+    assert len(root_item.children[-1].children) == 1
+    assert root_item.children[-1].children[0].title == "Section 2"
+    
 
-
-def test_add_section_hierarchy_no_title(mock_section):
+def test_add_navigation_hierarchy_navigation_input(mock_navigation):
     """
-    Test the add_section_hierarchy function
-    when titles is an empty list.
+    Test the add_navigation_hierarchy function when the input item is the entire navigation.
+    """
+    root_item = mock_navigation
+    titles = ["Section 1", "Section 2"]
+    add_navigation_hierarchy(root_item, titles)
+    assert len(root_item.items) == 2
+    assert root_item.items[-1].title == "Section 1"
+    assert len(root_item.items[-1].children) == 1
+    assert root_item.items[-1].children[0].title == "Section 2"
+
+def test_add_pages_to_nav_no_section_creation(mock_mkdocs_config, mock_navigation):
+    """
+    Test the add_pages_to_nav function when all the subsections are present.
     """
     pages = [MagicMock(), MagicMock()]
-    root_section = mock_section
-    titles = []
-    add_section_hierarchy(root_section.children, titles, pages)
-    assert root_section.children[-2:] == pages
-
-
-def test_add_pages_to_nav_section_present(mock_mkdocs_config, mock_section):
-    """
-    Test the add_pages_to_nav function when the section is present.
-    """
-    pages = [MagicMock(), MagicMock()]
-    nav = MagicMock()
-    nav.items = [mock_section]
+    nav = mock_navigation
     stubs_nav_path = "Root/Subsection"
     add_pages_to_nav(nav, pages, stubs_nav_path)
     assert len(nav.items) == 1
@@ -774,15 +773,16 @@ def test_add_pages_to_nav_section_present(mock_mkdocs_config, mock_section):
     assert nav.items[0].children[1].title == "Subsection"
     assert len(nav.items[0].children[1].children) == 3
     assert nav.items[0].children[1].children[-2:] == pages
+    for page in pages:
+        assert page.parent == nav.items[0].children[1]
 
 
-def test_add_pages_to_nav_section_created(mock_mkdocs_config, mock_section):
+def test_add_pages_to_nav_section_created(mock_mkdocs_config, mock_navigation):
     """
     Test the add_pages_to_nav function when the section needs to be created.
     """
     pages = [MagicMock(), MagicMock()]
-    nav = MagicMock()
-    nav.items = [mock_section]
+    nav = mock_navigation
     stubs_nav_path = "Root/New Section"
     add_pages_to_nav(nav, pages, stubs_nav_path)
     assert len(nav.items) == 1
@@ -792,3 +792,19 @@ def test_add_pages_to_nav_section_created(mock_mkdocs_config, mock_section):
     assert nav.items[0].children[2].title == "New Section"
     assert len(nav.items[0].children[1].children) == 1
     assert nav.items[0].children[2].children[-2:] == pages
+    for page in pages:
+        assert page.parent == nav.items[0].children[2]
+
+def test_add_pages_to_nav_root(mock_mkdocs_config, mock_navigation):
+    """
+    Test the add_pages_to_nav function when the pages are added to the root navigation.
+    """
+    pages = [MagicMock(), MagicMock()]
+    nav = mock_navigation
+    stubs_nav_path = ""
+    add_pages_to_nav(nav, pages, stubs_nav_path)
+    assert len(nav.items) == 3
+    assert nav.items[0].title == "Root"
+    assert nav.items[-2:] == pages
+    for page in pages:
+        assert isinstance(page.parent, MagicMock)

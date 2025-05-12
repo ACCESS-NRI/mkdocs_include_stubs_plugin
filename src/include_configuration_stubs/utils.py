@@ -422,40 +422,41 @@ def set_stubs_nav_path(
         return stubs_nav_path.removesuffix("/")
 
 
-def add_section_hierarchy(items: list, titles: list[str], pages: list[Page]) -> None:
+def add_navigation_hierarchy(item: Section | Navigation, titles: list[str]) -> Section:
     """
-    Add a nested hierarchy path to the items of a navigation.
-    The pages are added to the deepest section.
+    Add a nested hierarchy path to the navigation item.
 
     Example:
-      titles = ["title1","title2","title3"]
-      items = [Page("page1"), Page("page2")]
-      => [
-            Page("page1"),
-            Page("page2"),
-            Section("title1", children=[
-              Section("title2", children=[
-                Section("title3", children=pages)
-              ])
-            ]),
-         ]
+        titles = ["title1","title2","title3"]
+        item = Section("Root",[Page("page1"), Page("page2")])
+        => The item will become =>
+            Section("Root",[
+                Page("page1"),
+                Page("page2"),
+                Section("title1", children=[
+                    Section("title2", children=[
+                        Section("title3", children=[])
+                    ])
+                ]),
+            ]
 
     Args:
+        item: mkdocs.structure.nav.Section or mkdocs.structure.nav.Navigation
+            The MkDocs navigation item to add the hierarchy to.
         titles: Str
             The titles for each of the section hierarchy.
-        pages: List of mkdocs.structure.pages.Page
-            The pages to add to the deepest section.
     """
     # Create the root section
-    current_items = items
-    if len(titles) > 0:
-        # For each subsequent title, nest deeper
-        for title in titles:
-            child = Section(title, [])
-            current_items.append(child)
-            current_items = child.children
-    # Add the pages to the deepest section
-    current_items.extend(pages)
+    if isinstance(item, Navigation):
+        current_children = item.items
+    else:
+        current_children = item.children
+    current_parent = item
+    for title in titles:
+        current_parent = Section(title, [])
+        current_children.append(current_parent)
+        current_children = current_parent.children
+    return current_parent # type: ignore[return-value]
 
 
 def add_pages_to_nav(
@@ -474,22 +475,32 @@ def add_pages_to_nav(
         stubs_nav_path: Str
             The hierarchical structure of the navigation Section where to place the stubs pages.
     """
-    section_titles = stubs_nav_path.split("/")
-    current_items = nav.items
-    while True:
-        # Try to find an existing Section with this title
+    section_titles = stubs_nav_path.split("/") if stubs_nav_path else []
+    current_parent: Section | Navigation = nav
+    current_children = nav.items
+    for it, title in enumerate(section_titles):
+        # Try to find an existing Section with the current title
         section = next(
             (
                 item
-                for item in current_items
-                if isinstance(item, Section) and item.title == section_titles[0]
+                for item in current_children
+                if isinstance(item, Section) and item.title == title
             ),
             None,
         )
+        # If no Section is found, create the navigation hierarchy
         if section is None:
-            # Not found → create it and append to current_items
-            add_section_hierarchy(current_items, section_titles, pages)
+            current_parent = add_navigation_hierarchy(current_parent, section_titles[it:])
             break
-        # Descend into this section’s children for next iteration
-        current_items = section.children
-        section_titles.pop(0)
+        # Otherwise assign values for next iteration
+        current_children = section.children
+        current_parent = section
+    # # Add pages
+    # # Add parent to the pages
+    if isinstance(current_parent, Section):
+        current_children = current_parent.children
+        for page in pages:
+            page.parent = current_parent
+    else:
+        current_children = current_parent.items
+    current_children.extend(pages)

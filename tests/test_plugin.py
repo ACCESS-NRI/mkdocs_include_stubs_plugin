@@ -198,3 +198,5 @@ def test_on_nav(mock_set_stubs_nav_path, mock_files, create_plugin, mock_mkdocs_
     assert len(nav.items[0].children[2].children) == 1
     assert nav.items[0].children[2].children[0].title == "Path"
     assert nav.items[0].children[2].children[0].children == [pages[1], pages[0], pages[2]]
+    for page in pages:
+        assert page.parent == nav.items[0].children[2].children[0]
