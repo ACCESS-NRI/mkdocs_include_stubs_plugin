@@ -765,8 +765,8 @@ def test_add_pages_to_nav_no_section_creation(mock_mkdocs_config, mock_navigatio
     """
     pages = [MagicMock(), MagicMock()]
     nav = mock_navigation
-    stubs_nav_path = "Root/Subsection"
-    add_pages_to_nav(nav, pages, stubs_nav_path)
+    nav_titles = ["Root","Subsection"]
+    add_pages_to_nav(nav, pages, nav_titles)
     assert len(nav.items) == 1
     assert nav.items[0].title == "Root"
     assert len(nav.items[0].children) == 2
@@ -783,8 +783,8 @@ def test_add_pages_to_nav_section_created(mock_mkdocs_config, mock_navigation):
     """
     pages = [MagicMock(), MagicMock()]
     nav = mock_navigation
-    stubs_nav_path = "Root/New Section"
-    add_pages_to_nav(nav, pages, stubs_nav_path)
+    nav_titles = ["Root","New Section"]
+    add_pages_to_nav(nav, pages, nav_titles)
     assert len(nav.items) == 1
     assert nav.items[0].title == "Root"
     assert len(nav.items[0].children) == 3
@@ -801,8 +801,8 @@ def test_add_pages_to_nav_root(mock_mkdocs_config, mock_navigation):
     """
     pages = [MagicMock(), MagicMock()]
     nav = mock_navigation
-    stubs_nav_path = ""
-    add_pages_to_nav(nav, pages, stubs_nav_path)
+    nav_titles = [""]
+    add_pages_to_nav(nav, pages, nav_titles)
     assert len(nav.items) == 3
     assert nav.items[0].title == "Root"
     assert nav.items[-2:] == pages

@@ -20,6 +20,14 @@ class GitRefType(StrEnum):
     TAG = "tag"
     ALL = "all"
 
+    def __str__(self) -> str:
+        if self is GitRefType.BRANCH:
+            return "branches"
+        elif self is GitRefType.TAG:
+            return "tags"
+        else:
+            return "branches and tags"    
+
 
 class _MainWebsiteOptions(Config):
     """Sub-options for the main_website option."""

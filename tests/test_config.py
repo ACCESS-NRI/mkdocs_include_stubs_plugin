@@ -2,6 +2,7 @@ import pytest
 
 from include_configuration_stubs.config import (
     set_default_stubs_nav_path,
+    GitRefType,
 )
 
 @pytest.mark.parametrize(
@@ -37,3 +38,22 @@ from include_configuration_stubs.config import (
 def test_set_default_stubs_nav_path(stubs_parent_url, expected_output):
     """Test the set_default_stubs_nav_path function."""
     assert set_default_stubs_nav_path(stubs_parent_url) == expected_output
+
+@pytest.mark.parametrize(
+    "enum, expected_value, expected_repr",
+    [
+        ("BRANCH", "branch", "branches"), # BRANCH
+        ("TAG", "tag", "tags"), # TAG
+        ("ALL", "all", "branches and tags"), # ALL
+    ],
+    ids=[
+        "BRANCH",
+        "TAG",
+        "ALL",
+    ],
+)
+def test_git_ref_type(enum, expected_value, expected_repr):
+    """Test the GitRefType enum."""
+    _enum = getattr(GitRefType, enum)
+    assert str(_enum) == expected_repr
+    assert _enum.value == expected_value

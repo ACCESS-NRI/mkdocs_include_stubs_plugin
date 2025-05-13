@@ -6,20 +6,23 @@ import os
 import re
 import shutil
 import subprocess
-import requests
-from markdown.extensions.toc import TocExtension
-from markdown import Markdown
 from collections import namedtuple
 from functools import partial
-from typing import Sequence, Optional
 from itertools import count
+from typing import Optional, Sequence
+
+import requests
 from bs4 import BeautifulSoup
-
+from markdown import Markdown
+from markdown.extensions.toc import TocExtension
 from mkdocs.structure.files import File, Files
+from mkdocs.structure.nav import Navigation, Section
 from mkdocs.structure.pages import Page
-from mkdocs.structure.nav import Section, Navigation
-from include_configuration_stubs.config import GitRefType, set_default_stubs_nav_path
 
+from include_configuration_stubs.config import GitRefType, set_default_stubs_nav_path
+from include_configuration_stubs.logging import get_custom_logger
+
+LOGGER = get_custom_logger(__name__)
 GITHUB_URL = "https://github.com/"
 GITHUB_SSH = "git@github.com:"
 
@@ -359,7 +362,10 @@ def make_file_unique(file: File, files: Files) -> None:
             ):
                 file.src_path = new_src
                 file.dest_path = new_dest
-                # Log warning if the file name was changed
+                LOGGER.warning(
+                    f"File {src!r} already exists in the site. "
+                    f"Changing its url to unique destination {new_dest!r}."
+                )
                 break
 
 
@@ -456,13 +462,13 @@ def add_navigation_hierarchy(item: Section | Navigation, titles: list[str]) -> S
         current_parent = Section(title, [])
         current_children.append(current_parent)
         current_children = current_parent.children
-    return current_parent # type: ignore[return-value]
+    return current_parent  # type: ignore[return-value]
 
 
 def add_pages_to_nav(
     nav: Navigation,
     pages: list[Page],
-    stubs_nav_path: str,
+    section_titles: list[str],
 ) -> None:
     """
     Add the configuration stubs to the MkDocs navigation.
@@ -472,10 +478,11 @@ def add_pages_to_nav(
             The MkDocs navigation.
         pages: List of mkdocs.structure.pages.Page
             The pages to add to the deepest navigation Section.
-        stubs_nav_path: Str
-            The hierarchical structure of the navigation Section where to place the stubs pages.
+        section_titles: List of Str
+            The titles defining the hierarchical structure of the navigation Section where to place the stubs pages.
     """
-    section_titles = stubs_nav_path.split("/") if stubs_nav_path else []
+    if not section_titles[0]: # Case when the stubs_nav_path is empty (root nav path)
+        section_titles = []
     current_parent: Section | Navigation = nav
     current_children = nav.items
     for it, title in enumerate(section_titles):
@@ -490,7 +497,14 @@ def add_pages_to_nav(
         )
         # If no Section is found, create the navigation hierarchy
         if section is None:
-            current_parent = add_navigation_hierarchy(current_parent, section_titles[it:])
+            hierarchy = ' -> '.join([section_titles[it-1], title])
+            LOGGER.warning(
+                f"Section {hierarchy!r} not found in the site navigation. "
+                f"Creating a new {title!r} section for the configuration stubs."
+            )
+            current_parent = add_navigation_hierarchy(
+                current_parent, section_titles[it:]
+            )
             break
         # Otherwise assign values for next iteration
         current_children = section.children

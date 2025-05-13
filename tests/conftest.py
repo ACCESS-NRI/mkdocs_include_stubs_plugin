@@ -1,10 +1,8 @@
 from unittest.mock import MagicMock
 
 import pytest
-from mkdocs.structure.nav import Section, Navigation
+from mkdocs.structure.nav import Navigation, Section
 from mkdocs.structure.pages import Page
-
-
 
 @pytest.fixture
 def mock_files():
@@ -47,6 +45,7 @@ def mock_section(mock_mkdocs_config):
             ),
         ],
     )
+
 
 @pytest.fixture
 def mock_navigation(mock_section):
