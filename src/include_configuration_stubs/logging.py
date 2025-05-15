@@ -13,10 +13,10 @@ def get_custom_logger(name: str) -> logging.Logger:
     Returns:
         A logging.Logger instance.
     """
-    plugin_name = name.split(".", 1)[0]
+    plugin_name = name.split(".")[0]
     logger = logging.getLogger(f"mkdocs.plugins.{plugin_name}")
     logger.propagate = False
-    if not logger.handlers:
+    if not logger.handlers: # pragma no branch
         logger.setLevel(logging.INFO)
         handler = logging.StreamHandler()
         handler.setFormatter(CustomColorFormatter(plugin_name))

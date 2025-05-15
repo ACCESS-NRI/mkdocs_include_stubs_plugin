@@ -1,7 +1,8 @@
 # fp is a fixture provided by pytest-subprocess.
 
+import logging
 from subprocess import CalledProcessError
-from unittest.mock import MagicMock, patch, ANY
+from unittest.mock import MagicMock, patch
 
 import pytest
 from requests import RequestException
@@ -10,6 +11,8 @@ from include_configuration_stubs.config import GitRefType
 from include_configuration_stubs.plugin import SUPPORTED_FILE_FORMATS
 from include_configuration_stubs.utils import (
     ConfigStub,
+    add_navigation_hierarchy,
+    add_pages_to_nav,
     append_number_to_file_name,
     check_is_installed,
     get_command_output,
@@ -20,15 +23,21 @@ from include_configuration_stubs.utils import (
     get_git_refs,
     get_html_title,
     get_md_title,
-    get_remote_repo,
+    get_remote_repo_from_local_repo,
     get_repo_from_input,
     get_repo_from_url,
     is_main_website,
+    logger,
     make_file_unique,
     set_stubs_nav_path,
-    add_navigation_hierarchy,
-    add_pages_to_nav,
+    get_default_branch_from_remote_repo,
 )
+
+
+
+@pytest.fixture(autouse=True)
+def silence_logs():
+    logger.setLevel(logging.CRITICAL)
 
 
 @pytest.fixture
@@ -276,12 +285,12 @@ def test_get_config_stub_content(
 
 def test_get_remote_repo(fp):
     """
-    Test the get_remote_repo function.
+    Test the get_remote_repo_from_local_repo function.
     """
     mock_stdout = "mock_output"
     command = ["git", "remote", "get-url", "origin"]
     fp.register(command, stdout=mock_stdout)
-    output = get_remote_repo()
+    output = get_remote_repo_from_local_repo()
     assert output == mock_stdout
     assert command in fp.calls
 
@@ -341,7 +350,7 @@ def test_get_repo_from_input_url_input(config_input, get_repo_from_url_output):
     """Test the get_repo_from_input function."""
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo"
+            "include_configuration_stubs.utils.get_remote_repo_from_local_repo"
         ) as mock_get_remote_repo,
         patch(
             "include_configuration_stubs.utils.get_repo_from_url",
@@ -361,7 +370,7 @@ def test_get_repo_from_input_repo_input():
     config_input = "owner-example/repo_name"
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo"
+            "include_configuration_stubs.utils.get_remote_repo_from_local_repo"
         ) as mock_get_remote_repo,
         patch(
             "include_configuration_stubs.utils.get_repo_from_url"
@@ -388,7 +397,7 @@ def test_get_repo_from_input_repo_input_invalid(config_input):
     """
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo"
+            "include_configuration_stubs.utils.get_remote_repo_from_local_repo"
         ) as mock_get_remote_repo,
         patch(
             "include_configuration_stubs.utils.get_repo_from_url"
@@ -414,7 +423,7 @@ def test_get_repo_from_input_no_input(config_input):
     get_repo_from_url_output = "example/repo"
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo",
+            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
             return_value=get_remote_repo_output,
         ) as mock_get_remote_repo,
         patch(
@@ -436,11 +445,11 @@ def test_get_repo_from_input_no_input(config_input):
 def test_get_repo_from_input_no_input_error(config_input):
     """
     Test the get_repo_from_input function when the input is None or empty
-    and get_remote_repo raises an exception.
+    and get_remote_repo_from_local_repo raises an exception.
     """
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo",
+            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
             side_effect=CalledProcessError(
                 returncode=1, cmd="example", stderr="example_error"
             ),
@@ -459,45 +468,45 @@ def test_get_repo_from_input_no_input_error(config_input):
 
 
 @pytest.mark.parametrize(
-    "main_branch_config_input, repo, command_output, get_repo_from_url_output, expected_output",
+    "main_branch_config_input, local_branch, remote_owner_name, expected_output",
     [
-        ("main", "example/repo", "main", "example/repo", True),  # true
-        ("main", "example/repo", "not_main", "example/repo", False),  # not_main_branch
-        (
-            "main",
-            "example/repo",
-            "not_main",
-            "example/different_repo",
-            False,
-        ),  # not_main_repo
+        ("branch", "branch", "example/repo", True),  # true
+        ("main_branch", "not_main_branch", "example/repo", False),  # not_main_branch
+        ("branch", "branch", "example/different_repo", False),  # not_main_repo
+        (None, "default", "example/repo", True),  # none_branch_true
+        (None, "default", "example/different_repo", False),  # none_branch_false
     ],
     ids=[
         "true",
         "not_main_branch",
         "not_main_repo",
+        "none_branch_true",
+        "none_branch_false",
     ],
 )
+@patch("include_configuration_stubs.utils.get_default_branch_from_remote_repo", return_value="default")
 def test_is_main_website(
+    mock_get_default_branch_from_remote_repo,
     fp,
     main_branch_config_input,
-    repo,
-    command_output,
-    get_repo_from_url_output,
+    local_branch,
+    remote_owner_name,
     expected_output,
 ):
     """
     Test the is_main_website function.
     """
+    repo = "example/repo"
     command = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
-    fp.register(command, stdout=command_output)
+    fp.register(command, stdout=local_branch)
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo",
-            return_value=get_repo_from_url_output,
+            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
+            return_value=remote_owner_name,
         ) as mock_get_remote_repo,
         patch(
             "include_configuration_stubs.utils.get_repo_from_url",
-            return_value=repo,
+            return_value=remote_owner_name,
         ) as mock_get_repo_from_url,
     ):
         output = is_main_website(main_branch_config_input, repo)
@@ -508,7 +517,7 @@ def test_is_main_website(
 
 def test_is_main_website_get_remote_repo_exception(fp):
     """
-    Test the is_main_website function when the get_remote_repo raises an exception.
+    Test the is_main_website function when the get_remote_repo_from_local_repo raises an exception.
     """
     main_branch_config_input = "test"
     repo = "another_example/name"
@@ -516,7 +525,7 @@ def test_is_main_website_get_remote_repo_exception(fp):
     fp.register(command, stdout="example_command_output")
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo",
+            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
             side_effect=CalledProcessError(
                 returncode=1, cmd="example", stderr="example_error"
             ),
@@ -541,7 +550,7 @@ def test_is_main_website_command_exception(fp):
     fp.register(command, stdout="example_command_output", returncode=1)
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo",
+            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
         ) as mock_get_remote_repo,
         patch(
             "include_configuration_stubs.utils.get_repo_from_url",
@@ -745,7 +754,7 @@ def test_add_navigation_hierarchy(mock_section):
     assert root_item.children[-1].title == "Section 1"
     assert len(root_item.children[-1].children) == 1
     assert root_item.children[-1].children[0].title == "Section 2"
-    
+
 
 def test_add_navigation_hierarchy_navigation_input(mock_navigation):
     """
@@ -759,13 +768,14 @@ def test_add_navigation_hierarchy_navigation_input(mock_navigation):
     assert len(root_item.items[-1].children) == 1
     assert root_item.items[-1].children[0].title == "Section 2"
 
+
 def test_add_pages_to_nav_no_section_creation(mock_mkdocs_config, mock_navigation):
     """
     Test the add_pages_to_nav function when all the subsections are present.
     """
     pages = [MagicMock(), MagicMock()]
     nav = mock_navigation
-    nav_titles = ["Root","Subsection"]
+    nav_titles = ["Root", "Subsection"]
     add_pages_to_nav(nav, pages, nav_titles)
     assert len(nav.items) == 1
     assert nav.items[0].title == "Root"
@@ -783,7 +793,7 @@ def test_add_pages_to_nav_section_created(mock_mkdocs_config, mock_navigation):
     """
     pages = [MagicMock(), MagicMock()]
     nav = mock_navigation
-    nav_titles = ["Root","New Section"]
+    nav_titles = ["Root", "New Section"]
     add_pages_to_nav(nav, pages, nav_titles)
     assert len(nav.items) == 1
     assert nav.items[0].title == "Root"
@@ -794,6 +804,7 @@ def test_add_pages_to_nav_section_created(mock_mkdocs_config, mock_navigation):
     assert nav.items[0].children[2].children[-2:] == pages
     for page in pages:
         assert page.parent == nav.items[0].children[2]
+
 
 def test_add_pages_to_nav_root(mock_mkdocs_config, mock_navigation):
     """
@@ -808,3 +819,46 @@ def test_add_pages_to_nav_root(mock_mkdocs_config, mock_navigation):
     assert nav.items[-2:] == pages
     for page in pages:
         assert isinstance(page.parent, MagicMock)
+
+
+
+@pytest.mark.parametrize(
+    "response_json, response_raise, expected_output",
+    [
+        (
+            None,
+            True,
+            None,
+        ),  # requests_error
+        (
+            {
+                "something": "example",
+                "default_branch": "default",
+                "name": "some_name",
+            },
+            False,
+            "default",
+        ),  # valid
+    ],
+    ids=[
+        "requests_error",
+        "valid",
+    ],
+)
+@patch("include_configuration_stubs.utils.requests.get")
+def test_get_default_branch_from_remote_repo(
+    mock_requests_get, response_json, response_raise, expected_output
+):
+    """
+    Test the get_default_branch_from_remote_repo function.
+    """
+    repo = "owner/repo"
+    mock_response = MagicMock()
+    mock_response.json.return_value = response_json
+    mock_requests_get.return_value = mock_response
+    if response_raise:
+        mock_response.ok = False
+        with pytest.raises(ValueError):
+            get_default_branch_from_remote_repo(repo)
+    else:
+        assert get_default_branch_from_remote_repo(repo) == expected_output

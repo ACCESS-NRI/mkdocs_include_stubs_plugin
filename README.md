@@ -37,7 +37,7 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
         Default value is `tag`.
     - `branch`
         _Git_ branch where the main website documentation resides.
-        Default value is `main`.
+        Default value is the repository's default branch.
 - `preview_website`
     Configuration parameters for the PR preview and local preview websites.
     **Note**: The `main_website` configurations are also included when building preview websites. To exclude the main website from the preview websites, set `no_main` to `true`.
@@ -72,6 +72,9 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
     replacing undersores with spaces.
     For example, a `stubs_parent_url` set to `custom/navigation/configuration_stubs` becomes `Custom/Navigation/Configuration stubs`, 
     placing the configuration stubs inside the `Configuration stubs` subsection, within the `Navigation` navigation section, under the top-level `Custom` Section.
+
+## MkDocs wrapper
+This plugin also installs a `mkdocs` wrapper executable
 
 ## Lincense
 Apache Software License 2.0

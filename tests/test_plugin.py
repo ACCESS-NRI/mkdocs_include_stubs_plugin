@@ -5,12 +5,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 import logging
 
-from include_configuration_stubs.plugin import IncludeConfigurationStubsPlugin, LOGGER
+from include_configuration_stubs.plugin import IncludeConfigurationStubsPlugin, logger
 from include_configuration_stubs.utils import ConfigStub
 
 @pytest.fixture(autouse=True)
 def silence_logs():
-    LOGGER.setLevel(logging.CRITICAL)
+    logger.setLevel(logging.CRITICAL)
 
 @pytest.fixture
 def mock_plugin_config():

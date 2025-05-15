@@ -9,7 +9,6 @@ T = TypeVar("T")
 DEFAULT_PATTERN_MAIN_WEBSITE = r"release-*"
 DEFAULT_PATTERN_PREVIEW_WEBSITE = r"dev-*"
 DEFAULT_STUBS_DIR_PATH = "documentation"
-DEFAULT_MAIN_WEBSITE_BRANCH = "main"
 DEFAULT_STUBS_WEBSITE_DIR_PATH = "configurations"
 
 
@@ -39,10 +38,7 @@ class _MainWebsiteOptions(Config):
 
     ref_type = opt.Choice([grt.value for grt in GitRefType], default="tag")
 
-    branch = opt.Type(
-        str,
-        default=DEFAULT_MAIN_WEBSITE_BRANCH,
-    )
+    branch = opt.Optional(opt.Type(str))
 
 
 class _PreviewWebsiteOptions(Config):

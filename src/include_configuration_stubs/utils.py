@@ -22,14 +22,13 @@ from mkdocs.structure.pages import Page
 from include_configuration_stubs.config import GitRefType, set_default_stubs_nav_path
 from include_configuration_stubs.logging import get_custom_logger
 
-LOGGER = get_custom_logger(__name__)
+logger = get_custom_logger(__name__)
 GITHUB_URL = "https://github.com/"
 GITHUB_SSH = "git@github.com:"
 
 ConfigStub = namedtuple("ConfigStub", ["fname", "title", "content"])
 
 run_command = partial(subprocess.run, capture_output=True, text=True, check=True)
-
 
 def get_command_output(command: Sequence[str]) -> str:
     """
@@ -227,7 +226,7 @@ def get_config_stub(
     return ConfigStub(fname=stub_name, content=stub_content, title=title)
 
 
-def get_remote_repo() -> str:
+def get_remote_repo_from_local_repo() -> str:
     """
     Get the remote repository url from the current directory.
 
@@ -272,10 +271,10 @@ def get_repo_from_input(repo_config_input: Optional[str]) -> str:
             A string in the format 'OWNER/REPO'.
     """
     try:
-        repo = get_remote_repo() if not repo_config_input else repo_config_input
+        repo = get_remote_repo_from_local_repo() if not repo_config_input else repo_config_input
     except subprocess.CalledProcessError as e:
         raise ValueError(
-            f"Failed to get the GitHub repository from local directory: {e.stderr.strip()}"
+            f"No GitHub repository specified. Failed to retrieve the GitHub repository from local directory: {e.stderr.strip()}"
         ) from e
     if repo.startswith(GITHUB_URL) or repo.startswith(GITHUB_SSH):
         repo = get_repo_from_url(repo)
@@ -284,12 +283,12 @@ def get_repo_from_input(repo_config_input: Optional[str]) -> str:
     return repo
 
 
-def is_main_website(main_branch_config_input: str, repo: str) -> bool:
+def is_main_website(main_branch_config_input: str | None, repo: str) -> bool:
     """
     Determine whether the build is intended for the main website.
 
     Args:
-        main_branch_config_input: Str
+        main_branch_config_input: Str or None
             The branch for the main site configuration.
         repo: Str
             The GitHub repository in the format OWNER/REPO.
@@ -298,8 +297,10 @@ def is_main_website(main_branch_config_input: str, repo: str) -> bool:
         bool: True if both the branch and repository match the main site configuration;
             False otherwise.
     """
+    if main_branch_config_input is None:
+        main_branch_config_input = get_default_branch_from_remote_repo(repo)
     try:
-        remote_repo = get_remote_repo()
+        remote_repo = get_remote_repo_from_local_repo()
         command = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
         local_branch = get_command_output(command)
     except subprocess.CalledProcessError:
@@ -362,7 +363,7 @@ def make_file_unique(file: File, files: Files) -> None:
             ):
                 file.src_path = new_src
                 file.dest_path = new_dest
-                LOGGER.warning(
+                logger.warning(
                     f"File {src!r} already exists in the site. "
                     f"Changing its url to unique destination {new_dest!r}."
                 )
@@ -498,7 +499,7 @@ def add_pages_to_nav(
         # If no Section is found, create the navigation hierarchy
         if section is None:
             hierarchy = ' -> '.join([section_titles[it-1], title])
-            LOGGER.warning(
+            logger.warning(
                 f"Section {hierarchy!r} not found in the site navigation. "
                 f"Creating a new {title!r} section for the configuration stubs."
             )
@@ -518,3 +519,25 @@ def add_pages_to_nav(
     else:
         current_children = current_parent.items
     current_children.extend(pages)
+
+def get_default_branch_from_remote_repo(remote_repo: str) -> str:
+    """
+    Get the name of the remote repository's default branch.
+
+    Args:
+        remote_repo: Str
+            The remote repository in the format OWNER/REPO.
+
+    Returns:
+        Str
+            The name of the remote repository's default branch.
+    """
+    url = f"https://api.github.com/repos/{remote_repo}"
+    response = requests.get(url)
+    if not response.ok:
+        raise ValueError(
+            f"Failed to retrieve the default branch for the repository {remote_repo!r}. "
+            "Please check the repository name and your network connection."
+        )
+    return response.json()["default_branch"]
+
