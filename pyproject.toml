@@ -37,7 +37,7 @@ requires = [
 include-configuration-stubs = "include_configuration_stubs.plugin:IncludeConfigurationStubsPlugin"
 
 [project.scripts]
-mkdocs_include = "include_configuration_stubs.cli:main"
+mkdocs = "include_configuration_stubs.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
