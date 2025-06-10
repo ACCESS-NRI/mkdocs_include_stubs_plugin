@@ -12,6 +12,7 @@ from include_configuration_stubs.cli import (
     parse_args,
     get_git_clone_command,
     get_mkdocs_yaml_path,
+    main,
 )
 
 
@@ -32,9 +33,11 @@ def test_get_default_mkdocs_arguments(command, other_args, expected_output):
     """
     assert get_default_mkdocs_arguments(command, other_args) == expected_output
 
+
 @pytest.fixture(autouse=True)
 def silence_logs():
     logger.setLevel(logging.CRITICAL)
+
 
 def test_run_default_mkdocs_command():
     """
@@ -42,7 +45,9 @@ def test_run_default_mkdocs_command():
     """
     with (
         patch("include_configuration_stubs.cli.cli") as mock_cli,
-        patch("include_configuration_stubs.cli.sys.argv", ['arg_0', 'arg_1']) as mock_sys_argv,
+        patch(
+            "include_configuration_stubs.cli.sys.argv", ["arg_0", "arg_1"]
+        ) as mock_sys_argv,
     ):
         parameters = ["arg1", "other-arg", "--option=1"]
         run_default_mkdocs_command(parameters)
@@ -60,7 +65,7 @@ def test_run_default_mkdocs_command():
                 }
             },
             None,
-        ), # not_plugins
+        ),  # not_plugins
         (
             {
                 "plugins": {
@@ -68,12 +73,12 @@ def test_run_default_mkdocs_command():
                 }
             },
             None,
-        ), # not_include_configuration_plugin
+        ),  # not_include_configuration_plugin
     ],
     ids=[
         "not_plugins",
         "not_include_configuration_plugin",
-    ], 
+    ],
 )
 def test_get_plugin_config_return_none(load_config_output, expected_output):
     """
@@ -85,12 +90,13 @@ def test_get_plugin_config_return_none(load_config_output, expected_output):
     ):
         get_plugin_config() == expected_output
 
+
 def test_get_plugin_config():
     """
     Test the get_plugin_config function.
     """
     config_value = {"key": "value"}
-    config_mock = MagicMock(config = config_value)
+    config_mock = MagicMock(config=config_value)
     load_config_output = {
         "plugins": {
             "include-configuration-stubs": config_mock,
@@ -102,10 +108,11 @@ def test_get_plugin_config():
     ):
         get_plugin_config() == config_value
 
+
 @pytest.mark.parametrize(
     "command",
     [None, "other"],
-    ids=["none_command","other_command"],
+    ids=["none_command", "other_command"],
 )
 @pytest.mark.parametrize(
     "mkdocs_exists",
@@ -125,19 +132,24 @@ def test_get_plugin_config():
         "no_flag",
     ],
 )
-def test_is_default_mkdocs_to_be_run_wrong_command(command, mkdocs_exists, other_args):
+@patch("include_configuration_stubs.cli.get_mkdocs_yaml_path")
+def test_is_default_mkdocs_to_be_run_wrong_command(
+    mock_get_mkdocs_yaml_path, command, mkdocs_exists, other_args
+):
     """
     Test the is_default_mkdocs_to_be_run function when the command passed is not 'serve' or 'build'.
     """
     expected_output = True
-    with patch("include_configuration_stubs.cli.os.path.exists", return_value=mkdocs_exists):
+    with patch(
+        "include_configuration_stubs.cli.os.path.exists", return_value=mkdocs_exists
+    ):
         assert is_default_mkdocs_to_be_run(command, other_args) == expected_output
 
 
 @pytest.mark.parametrize(
     "command",
     ["serve", "build"],
-    ids=["serve_command","build_command"],
+    ids=["serve_command", "build_command"],
 )
 @pytest.mark.parametrize(
     "mkdocs_exists",
@@ -157,67 +169,79 @@ def test_is_default_mkdocs_to_be_run_wrong_command(command, mkdocs_exists, other
         "config-file_flag_equal",
     ],
 )
-def test_is_default_mkdocs_to_be_run_good_command_f_option(command, mkdocs_exists, other_args):
+@patch("include_configuration_stubs.cli.get_mkdocs_yaml_path")
+def test_is_default_mkdocs_to_be_run_good_command_f_option(
+    mock_get_mkdocs_yaml_path, command, mkdocs_exists, other_args
+):
     """
     Test the is_default_mkdocs_to_be_run function when the command passed is 'serve' or 'build'
     and the '-f' or '--config-file' option is also passed.
     """
     expected_output = True
-    with patch("include_configuration_stubs.cli.os.path.exists", return_value=mkdocs_exists):
+    with patch(
+        "include_configuration_stubs.cli.os.path.exists", return_value=mkdocs_exists
+    ):
         assert is_default_mkdocs_to_be_run(command, other_args) == expected_output
+
 
 @pytest.mark.parametrize(
     "command",
     ["serve", "build"],
-    ids=["serve_command","build_command"],
+    ids=["serve_command", "build_command"],
 )
 @pytest.mark.parametrize(
     "mkdocs_exists",
     [True, False],
     ids=["mkdocs_exists", "mkdocs_not_exists"],
 )
-def test_is_default_mkdocs_to_be_run_good_command_no_f_option(command, mkdocs_exists):
+@patch("include_configuration_stubs.cli.get_mkdocs_yaml_path")
+def test_is_default_mkdocs_to_be_run_good_command_no_f_option(
+    mock_get_mkdocs_yaml_path, command, mkdocs_exists
+):
     """
     Test the is_default_mkdocs_to_be_run function when the command passed is 'serve' or 'build'
-    and the '-f' or '--config-file' option is also passed.
+    and the '-f' or '--config-file' option is not passed.
     """
     other_args = ["args", "--f"]
-    with patch("include_configuration_stubs.cli.os.path.exists", return_value=mkdocs_exists):
+    with patch(
+        "include_configuration_stubs.cli.os.path.exists", return_value=mkdocs_exists
+    ):
         assert is_default_mkdocs_to_be_run(command, other_args) == mkdocs_exists
+
 
 @pytest.mark.parametrize(
     "args, expected_command, expected_repo, expected_branch, expected_unknown_args",
     [
         [
-            "", 
-            None, 
-            None, 
-            None, 
+            "",
+            None,
+            None,
+            None,
             [],
         ],  # no_args
         [
-            "--repo owner/example --other-flag", 
-            None, 
-            "owner/example", 
-            None, 
+            "--repo owner/example --other-flag",
+            None,
+            "owner/example",
+            None,
             ["--other-flag"],
         ],  # no_command
         [
-            "example_command --branch example -b other_branch", 
+            "example_command --branch example -b other_branch",
             "example_command",
             None,
             "example",
             ["-b", "other_branch"],
         ],  # command_before_flag
         [
-            "--branch example --repo owner/repo example_command -b other_branch", 
+            "--branch example --repo owner/repo example_command -b other_branch",
             "example_command",
             "owner/repo",
             "example",
             ["-b", "other_branch"],
         ],  # command_after_known_flag
         [
-            "-b other_branch example_command --branch other", 
+            "-b other_branch example_command --branch other",
             "other_branch",
             None,
             "other",
@@ -232,24 +256,27 @@ def test_is_default_mkdocs_to_be_run_good_command_no_f_option(command, mkdocs_ex
         "command_after_unknown_flag",
     ],
 )
-def test_parse_args(args, expected_command, expected_repo, expected_branch, expected_unknown_args):
+def test_parse_args(
+    args, expected_command, expected_repo, expected_branch, expected_unknown_args
+):
     """
     Test the parse_args function.
     """
-    test_args = ['entry_point'] + args.split()
+    test_args = ["entry_point"] + args.split()
     # with patch('include_configuration_stubs.cli.sys.argv', test_args):
-    with patch('include_configuration_stubs.cli.sys.argv', test_args):
+    with patch("include_configuration_stubs.cli.sys.argv", test_args):
         known_args, unknown_args = parse_args()
     assert known_args.command == expected_command
     assert known_args.repo == expected_repo
     assert known_args.branch == expected_branch
     assert unknown_args == expected_unknown_args
 
+
 @pytest.mark.parametrize(
     "branch",
     [
-        "example_branch", # valid_branch
-        None, # none_branch
+        "example_branch",  # valid_branch
+        None,  # none_branch
     ],
     ids=[
         "valid_branch",
@@ -262,31 +289,38 @@ def test_get_git_clone_command(branch):
     """
     repo = "owner/repo"
     temp_dir = "tmp_name"
-    expected_output = ["git", "clone", "--depth=1", f"https://github.com/{repo}", temp_dir]
+    expected_output = [
+        "git",
+        "clone",
+        "--depth=1",
+        f"https://github.com/{repo}",
+        temp_dir,
+    ]
     if branch:
         expected_output.extend(["--branch", branch])
     output = get_git_clone_command(repo, branch, temp_dir)
     assert output == expected_output
 
+
 @pytest.mark.parametrize(
     "rglob_output, expected_output",
     [
         (
-            iter(["some/directory/mkdocs.yaml"]), 
+            iter(["some/directory/mkdocs.yaml"]),
             "some/directory/mkdocs.yaml",
-        ), # one_file_yaml
+        ),  # one_file_yaml
         (
-            iter(["some/directory/mkdocs.yml"]), 
+            iter(["some/directory/mkdocs.yml"]),
             "some/directory/mkdocs.yml",
-        ), # one_file_yml
+        ),  # one_file_yml
         (
-            iter(["some/directory/mkdocs.yml","other/mkdocs.yml"]), 
+            iter(["some/directory/mkdocs.yml", "other/mkdocs.yml"]),
             None,
-        ), # multiple_files
+        ),  # multiple_files
         (
-            iter([]), 
+            iter([]),
             None,
-        ), # no_file
+        ),  # no_file
     ],
     ids=[
         "one_file_yaml",
@@ -303,3 +337,108 @@ def test_get_mkdocs_yaml_path(mock_rglob, rglob_output, expected_output):
     mock_rglob.return_value = rglob_output
     output = get_mkdocs_yaml_path("some/directory")
     assert output == expected_output
+
+
+@pytest.mark.parametrize(
+    "output_is_default_mkdocs_to_be_run",
+    [
+        True, # true
+        False, # false
+    ],
+    ids=[
+        "default_mkdocs_true",
+        "default_mkdocs_false",
+    ],
+)
+@pytest.mark.parametrize(
+    "input_branch",
+    [
+        "example", # valid_branch
+        None, # none_branch
+    ],
+    ids=[
+        "valid_branch",
+        "none_branch",
+    ],
+)
+@pytest.mark.parametrize(
+    "plugin_config",
+    [
+        "valid", # valid_plugin_config
+        None, # none_plugin_config
+    ],
+    ids=[
+        "valid_plugin_config",
+        "none_plugin_config",
+    ],
+)
+@patch("include_configuration_stubs.cli.parse_args")
+@patch("include_configuration_stubs.cli.get_default_mkdocs_arguments")
+@patch("include_configuration_stubs.cli.run_default_mkdocs_command")
+@patch("include_configuration_stubs.cli.is_default_mkdocs_to_be_run")
+@patch("include_configuration_stubs.cli.get_repo_from_input")
+@patch("include_configuration_stubs.cli.get_default_branch_from_remote_repo")
+@patch("include_configuration_stubs.cli.TemporaryDirectory")
+@patch("include_configuration_stubs.cli.get_git_clone_command")
+@patch("include_configuration_stubs.cli.run_command")
+@patch("include_configuration_stubs.cli.get_mkdocs_yaml_path")
+@patch("include_configuration_stubs.cli.get_plugin_config")
+@patch("include_configuration_stubs.cli.os.chdir")
+def test_main(
+    mock_chdir,
+    mock_get_plugin_config,
+    mock_get_mkdocs_yaml_path,
+    mock_run_command,
+    mock_get_git_clone_command,
+    mock_temporary_directory,
+    mock_get_default_branch_from_remote_repo,
+    mock_get_repo_from_input,
+    mock_is_default_mkdocs_to_be_run,
+    mock_run_default_mkdocs_command,
+    mock_get_default_mkdocs_arguments,
+    mock_parse_args,
+    output_is_default_mkdocs_to_be_run,
+    input_branch,
+    plugin_config,
+    fp,
+):
+    """
+    Test the main function.
+    """
+    args = MagicMock()
+    args.branch = input_branch
+    known_args = ['some_args']
+    mock_parse_args.return_value=(args, known_args)
+    mock_get_default_mkdocs_arguments.return_value = args
+    mock_is_default_mkdocs_to_be_run.return_value = output_is_default_mkdocs_to_be_run
+    mock_return_git_clone_command = ["git", "clone", "command"]
+    mock_get_git_clone_command.return_value = mock_return_git_clone_command
+    fp.register(mock_return_git_clone_command)
+    mock_get_plugin_config.return_value = plugin_config
+    mock_get_mkdocs_yaml_path.return_value = "some/path/mkdocs.yaml"
+    main()
+    # Assertions
+    mock_run_default_mkdocs_command.assert_called_once_with(args)
+    if output_is_default_mkdocs_to_be_run:
+        mock_chdir.assert_not_called()
+        mock_get_plugin_config.assert_not_called()
+        mock_get_mkdocs_yaml_path.assert_not_called()
+        mock_run_command.assert_not_called()
+        mock_get_git_clone_command.assert_not_called()
+        mock_temporary_directory.assert_not_called()
+        mock_get_default_branch_from_remote_repo.assert_not_called()
+        mock_get_repo_from_input.assert_not_called()
+    else:
+        mock_get_repo_from_input.assert_called_once_with(args.repo)
+        if input_branch is None:
+            mock_get_default_branch_from_remote_repo.assert_called_once_with(
+                mock_get_repo_from_input.return_value
+            )
+        else:
+            mock_get_default_branch_from_remote_repo.assert_not_called()
+        mock_temporary_directory.assert_called_once()
+        mock_get_plugin_config.assert_called_once()
+        if plugin_config is None:
+            mock_chdir.assert_not_called()
+        else:
+            mock_chdir.assert_called_once_with("some/path")

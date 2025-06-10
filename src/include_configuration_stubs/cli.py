@@ -124,7 +124,7 @@ def is_default_mkdocs_to_be_run(command: str, other_args: list) -> bool:
             "Found 'mkdocs.yml' in the current directory."
         )
         return True
-    if mkdocs_path:=get_mkdocs_yaml_path(os.getcwd()):
+    if mkdocs_path:=get_mkdocs_yaml_path(os.getcwd()): # pragma: no branch
         logger.warning(
             f"Found a 'mkdocs.yml' file in a subdirectory of the current directory ({mkdocs_path!r}). "
             "If you want to use this 'mkdocs.yml', please run with the '-f' or '--config-file' option."
