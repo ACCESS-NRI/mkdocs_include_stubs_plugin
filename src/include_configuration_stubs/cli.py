@@ -11,10 +11,10 @@ from include_configuration_stubs.logging import get_custom_logger
 from include_configuration_stubs.utils import get_repo_from_input, run_command, get_default_branch_from_remote_repo
 
 PLUGIN_NAME = "include-configuration-stubs"
-ENTRY_POINT_NAME = "include-configuration-stubs"
+ENTRY_POINT_NAME = "mkdocs"
 SUPPORTED_COMMANDS = ("build", "serve")
 
-logger = get_custom_logger(ENTRY_POINT_NAME)
+logger = get_custom_logger(PLUGIN_NAME)
 
 def get_mkdocs_yaml_path(directory: str) -> str | None:
     """
@@ -110,17 +110,17 @@ def is_default_mkdocs_to_be_run(command: str, other_args: list) -> bool:
         True if the default mkdocs command should be run, False otherwise.
     """
     if command not in SUPPORTED_COMMANDS:
-        logger.warning(
+        logger.info(
             f"No command among {SUPPORTED_COMMANDS} passed."
         )
         return True
     if any(arg == "-f" or arg.startswith("--config-file") for arg in other_args):
-        logger.warning(
+        logger.info(
             "'-f' or '--config-file' option passed."
         )
         return True
     if os.path.exists("mkdocs.yml") or os.path.exists("mkdocs.yaml"):
-        logger.warning(
+        logger.info(
             "Found 'mkdocs.yml' in the current directory."
         )
         return True

@@ -2,11 +2,11 @@
 
 ## About
 Mkdocs plugin to include configuration _stubs_ within the build of a website for multiple branches within an ACCESS-NRI config repo.
-A configuration _stub_ consists of a single file in one of the [supported file formats](#supported_file_formats).
+A configuration _stub_ consists of a file in either of the [supported file formats](#supported_file_formats).
 
-This plugin adds files to the website structure using the `on_files` mkdocs hook. 
+This plugin adds _stub_ files to the website structure using the `on_files` mkdocs hook.
 Make sure you include this plugin in the `mkdocs.yml` file before any other plugin that uses included files (for example the `macros` plugin), if you want the
-files included by this plugin to be processed by the other plugins.
+files included by this plugin to be processed by those other plugins.
 
 ### Supported file formats
     - MarkDown (`.md`)
