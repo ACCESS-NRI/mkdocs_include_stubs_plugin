@@ -143,11 +143,11 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     DESCRIPTION = (
         "Wrapper for the mkdocs CLI, designed to work with the include-configuration-stubs plugin.\n\n"
         "If you want to run the default mkdocs command with the same arguments passed to this wrapper, "
-        f"you can run:\n\n {ENTRY_POINT_NAME} -- [arguments]\n\n"
-        "When run from a directory without a 'mkdocs.yml' file (e.g., a configuration stub folder), "
+        f"run:\n\n {ENTRY_POINT_NAME} -- [arguments]\n\n"
+        "When run from a directory without a 'mkdocs.yml' file (e.g., a configuration stub local branch), "
         "it builds the site by fetching the 'mkdocs.yml' and related contents from a specific branch of a public GitHub "
         "repository.\n\n"
-        "If a 'mkdocs.yml' exists in the local directory, if the '-f/--config-file' option is specified, "
+        "If a 'mkdocs.yml' exists in the local directory, if the '-f' or '--config-file' option is specified, "
         f"or if no passed command is among {SUPPORTED_COMMANDS}, it delegates to the standard `mkdocs` "
         "executable to run with the passed command-line arguments."
     )
@@ -157,21 +157,25 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     )
 
     # Add command as a positional optional argument
-    parser.add_argument(dest="command", nargs="?", metavar="arguments", help="Argument passed.")
+    parser.add_argument(dest="command", nargs="?", metavar="arguments", help="Arguments that are passed to the default mkdocs command.")
     # Add optional arguments
     parser.add_argument(
-        "--repo", 
+        "--repo", "--repository", "-r",
+        dest="repo",
         metavar="GITHUB_REPOSITORY", 
-        help="The public GitHub repository used to fetch the 'mkdocs.yml' and related contents to build the site. " \
+        help="When the 'mkdocs.yml' file is not found in the local directory (e.g., when the local branch contains a configuration stub), " \
+            "the specified repository is used to fetch the 'mkdocs.yml' and related contents to build the site. " \
             "It can be specified in one of the following formats: 1. GitHub URL (e.g., https://github.com/OWNER/REPO), " \
             "2. GitHub SSH (e.g., git@github.com:OWNER/REPO.git), 3. OWNER/REPO. " \
             "If not specified, the output of `git remote get-url origin` for the local directory will be used. " \
-            "Only GitHub repositories are supported.",
+            "Only public GitHub repositories are supported.",
     )
     parser.add_argument(
-        "--branch", 
+        "--branch", "-b",
+        dest="branch",
         metavar="BRANCH_NAME", 
-        help="The name of the branch used to fetch the 'mkdocs.yml' and related contents to build the site. " \
+        help="When the 'mkdocs.yml' file is not found in the local directory (e.g., when the local branch contains a configuration stub), " \
+            "the specified branch will be used to fetch the 'mkdocs.yml' and related contents from the repository to build the site. " \
             "If not specified, the repository's default branch will be used.",
     )
 

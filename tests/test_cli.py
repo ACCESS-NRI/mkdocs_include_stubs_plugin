@@ -227,30 +227,38 @@ def test_is_default_mkdocs_to_be_run_good_command_no_f_option(
             ["--other-flag"],
         ],  # no_command
         [
-            "example_command --branch example -b other_branch",
+            "-r owner/example -b branch",
+            None,
+            "owner/example",
+            "branch",
+            [],
+        ],  # other_flags
+        [
+            "example_command --branch example -g other_flag",
             "example_command",
             None,
             "example",
-            ["-b", "other_branch"],
+            ["-g", "other_flag"],
         ],  # command_before_flag
         [
-            "--branch example --repo owner/repo example_command -b other_branch",
+            "--branch example --repo owner/repo example_command -g other_flag",
             "example_command",
             "owner/repo",
             "example",
-            ["-b", "other_branch"],
+            ["-g", "other_flag"],
         ],  # command_after_known_flag
         [
-            "-b other_branch example_command --branch other",
-            "other_branch",
+            "-g other_flag example_command --branch other",
+            "other_flag",
             None,
             "other",
-            ["-b", "example_command"],
+            ["-g", "example_command"],
         ],  # command_after_unknown_flag
     ],
     ids=[
         "no_args",
         "no_command",
+        "other_flags",
         "command_before_flag",
         "command_after_known_flag",
         "command_after_unknown_flag",
