@@ -94,8 +94,14 @@ def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[str]:
     # Print all tags in the repository
     command = ["git", "ls-remote", refs_flag, repo_url, pattern]
     output = get_command_output(command)
-    # Get first column of the output (git sha)
-    refs = output.split()[::2]
+    splitted_output = [s.split('\t') for s in output.split('\n')]
+    # # Exclude the current local branch from the output if present, 
+    # because its files need to be added directly from the local branch, to 
+    # allow for the 'serve' command to track changes to those files
+    local_branch = get_local_branch()
+    remove_local_branch_from_refs(splitted_output, local_branch)
+    # # Get only the git sha
+    refs = [out[0] for out in splitted_output]
     return refs
 
 
@@ -301,8 +307,7 @@ def is_main_website(main_branch_config_input: str | None, repo: str) -> bool:
         main_branch_config_input = get_default_branch_from_remote_repo(repo)
     try:
         remote_repo = get_remote_repo_from_local_repo()
-        command = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
-        local_branch = get_command_output(command)
+        local_branch = get_local_branch()
     except subprocess.CalledProcessError:
         return False
     remote_owner_name = get_repo_from_url(remote_repo)
@@ -541,3 +546,28 @@ def get_default_branch_from_remote_repo(remote_repo: str) -> str:
         )
     return response.json()["default_branch"]
 
+def get_local_branch() -> str:
+    """
+    Get the name of the current local branch.
+
+    Returns:
+        Str
+            The name of the current local branch.
+    """
+    command = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
+    return get_command_output(command)
+
+def remove_local_branch_from_refs(refs: list[list[str]], local_branch: str) -> None:
+    """
+    Remove the local branch from the list of refs if it is present.
+
+    Args:
+        refs: List of Str
+            The list of refs to filter as an output of the `git ls-remote ...` command.
+        local_branch: Str
+            The name of the current local branch.
+    """
+    for i,ref in enumerate(refs):
+        if ref[1].endswith(f"/{local_branch}"):
+            del refs[i]
+            break
