@@ -28,21 +28,29 @@ GITHUB_SSH = "git@github.com:"
 
 ConfigStub = namedtuple("ConfigStub", ["fname", "title", "content"])
 
-run_command = partial(subprocess.run, capture_output=True, text=True, check=True)
-
-def get_command_output(command: Sequence[str]) -> str:
+def run_command(command: Sequence[str]) -> str:
     """
-    Run a command and return its output.
-
+    Run a command by capturing stdout and stderr.
+    If the command fails, print the error.
+    if get_output is True, return the command output as a string.
+    
     Args:
         command: Sequence of Str
             The command to run.
+        get_output: Bool
+            If True, the output is returned as a string.
 
     Returns:
-        Str
-            The output of the command.
+        None or Str
+            If get_output is True, the output is returned as a string, otherwise return None.
     """
-    result = run_command(command)
+    _run_command = partial(subprocess.run, capture_output=True, text=True, check=True)
+    try:
+        result = _run_command(command)
+    except subprocess.CalledProcessError as e:
+        raise subprocess.SubprocessError(
+            f"Command '{' '.join(command)}' failed with error: {e.stderr.strip()}"
+        )
     return result.stdout.strip()
 
 
@@ -93,7 +101,7 @@ def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[str]:
         refs_flag = "--heads --tags"
     # Print all tags in the repository
     command = ["git", "ls-remote", refs_flag, repo_url, pattern]
-    output = get_command_output(command)
+    output = run_command(command)
     splitted_output = [s.split('\t') for s in output.split('\n')]
     # # Exclude the current local branch from the output if present, 
     # because its files need to be added directly from the local branch, to 
@@ -241,7 +249,7 @@ def get_remote_repo_from_local_repo() -> str:
             The remote repository GitHub URL or SSH.
     """
     command = ["git", "remote", "get-url", "origin"]
-    return get_command_output(command)
+    return run_command(command)
 
 
 def get_repo_from_url(repo_url: str) -> str:
@@ -278,7 +286,7 @@ def get_repo_from_input(repo_config_input: Optional[str]) -> str:
     """
     try:
         repo = get_remote_repo_from_local_repo() if not repo_config_input else repo_config_input
-    except subprocess.CalledProcessError as e:
+    except subprocess.SubprocessError as e:
         raise ValueError(
             f"No GitHub repository specified. Failed to retrieve the GitHub repository from local directory: {e.stderr.strip()}"
         ) from e
@@ -308,7 +316,7 @@ def is_main_website(main_branch_config_input: str | None, repo: str) -> bool:
     try:
         remote_repo = get_remote_repo_from_local_repo()
         local_branch = get_local_branch()
-    except subprocess.CalledProcessError:
+    except subprocess.SubprocessError:
         return False
     remote_owner_name = get_repo_from_url(remote_repo)
     return (main_branch_config_input == local_branch) and (repo == remote_owner_name)
@@ -555,7 +563,7 @@ def get_local_branch() -> str:
             The name of the current local branch.
     """
     command = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
-    return get_command_output(command)
+    return run_command(command)
 
 def remove_local_branch_from_refs(refs: list[list[str]], local_branch: str) -> None:
     """

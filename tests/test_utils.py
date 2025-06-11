@@ -15,7 +15,6 @@ from include_configuration_stubs.utils import (
     add_pages_to_nav,
     append_number_to_file_name,
     check_is_installed,
-    get_command_output,
     get_config_stub,
     get_config_stub_content,
     get_config_stub_fname,
@@ -32,6 +31,7 @@ from include_configuration_stubs.utils import (
     set_stubs_nav_path,
     get_default_branch_from_remote_repo,
     remove_local_branch_from_refs,
+    run_command,
 )
 
 
@@ -45,12 +45,11 @@ def silence_logs():
 def mock_git_refs():
     pass
 
-
-def test_get_command_output(fp):
-    """Test the get_command_output function."""
+def test_run_command(fp):
+    """Test the run_command function."""
     command = ["echo", "Hello, World!"]
     fp.register(command, stdout="Hello, World!")
-    result = get_command_output(command)
+    result = run_command(command)
     assert result == "Hello, World!"
     assert command in fp.calls
 
