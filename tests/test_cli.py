@@ -391,9 +391,7 @@ def test_get_mkdocs_yaml_path(mock_rglob, rglob_output, expected_output):
 @patch("include_configuration_stubs.cli.run_command")
 @patch("include_configuration_stubs.cli.get_mkdocs_yaml_path")
 @patch("include_configuration_stubs.cli.get_plugin_config")
-@patch("include_configuration_stubs.cli.os.chdir")
 def test_main(
-    mock_chdir,
     mock_get_plugin_config,
     mock_get_mkdocs_yaml_path,
     mock_run_command,
@@ -415,20 +413,17 @@ def test_main(
     """
     args = MagicMock()
     args.branch = input_branch
-    known_args = ['some_args']
-    mock_parse_args.return_value=(args, known_args)
-    mock_get_default_mkdocs_arguments.return_value = args
+    unknown_args = ['some_args']
+    mock_parse_args.return_value=(args, unknown_args)
+    mock_get_default_mkdocs_arguments.return_value = unknown_args
     mock_is_default_mkdocs_to_be_run.return_value = output_is_default_mkdocs_to_be_run
     mock_return_git_clone_command = ["git", "clone", "command"]
     mock_get_git_clone_command.return_value = mock_return_git_clone_command
     fp.register(mock_return_git_clone_command)
     mock_get_plugin_config.return_value = plugin_config
-    mock_get_mkdocs_yaml_path.return_value = "some/path/mkdocs.yaml"
     main()
     # Assertions
-    mock_run_default_mkdocs_command.assert_called_once_with(args)
     if output_is_default_mkdocs_to_be_run:
-        mock_chdir.assert_not_called()
         mock_get_plugin_config.assert_not_called()
         mock_get_mkdocs_yaml_path.assert_not_called()
         mock_run_command.assert_not_called()
@@ -436,6 +431,7 @@ def test_main(
         mock_temporary_directory.assert_not_called()
         mock_get_default_branch_from_remote_repo.assert_not_called()
         mock_get_repo_from_input.assert_not_called()
+        mock_run_default_mkdocs_command.assert_called_once_with(unknown_args)
     else:
         mock_get_repo_from_input.assert_called_once_with(args.repo)
         if input_branch is None:
@@ -447,6 +443,8 @@ def test_main(
         mock_temporary_directory.assert_called_once()
         mock_get_plugin_config.assert_called_once()
         if plugin_config is None:
-            mock_chdir.assert_not_called()
+            mock_run_default_mkdocs_command.assert_called_once_with(unknown_args)
         else:
-            mock_chdir.assert_called_once_with("some/path")
+            unknown_args.extend(['-f', mock_get_mkdocs_yaml_path.return_value])
+            mock_run_default_mkdocs_command.assert_called_once_with(unknown_args)
+            

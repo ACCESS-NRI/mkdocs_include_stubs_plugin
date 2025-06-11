@@ -210,8 +210,9 @@ def main():
         ) as temp_dir:
             command = get_git_clone_command(repo, branch, temp_dir)
             run_command(command)
-            # Get the plugin configuration
+            # Get mkdocs configuration
             mkdocs_yaml_path = get_mkdocs_yaml_path(temp_dir)
+            # Get the plugin configuration
             plugin_config = get_plugin_config(mkdocs_yaml_path)
             # If the plugin configuration is not found, run the default mkdocs command
             if not plugin_config:
@@ -221,10 +222,8 @@ def main():
                 )
                 run_default_mkdocs_command(default_mkdocs_arguments)
             else:
-                # The best way to run the mkdocs command with the cloned mkdocs_yaml_path is
-                # to run the default mkdocs command with the `-f <path>` argument.
-                # However, currently this conflicts with the bibtex plugin (for a bug in the bibtex plugnin).
-                # Therefore, for the moment we change the current working directory to the directory containing the mkdocs_yaml_path
-                os.chdir(os.path.dirname(mkdocs_yaml_path)) # TODO: Substitute this line with default_mkdocs_arguments.extend(["-f", mkdocs_yaml_path])
+                # Run the default mkdocs command with the mkdocs config and contents from
+                # the specified repo and branch
+                default_mkdocs_arguments.extend(["-f", mkdocs_yaml_path])
                 run_default_mkdocs_command(default_mkdocs_arguments)
                 
