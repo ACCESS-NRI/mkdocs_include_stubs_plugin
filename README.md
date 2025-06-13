@@ -61,17 +61,23 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
     - Refs whose `stubs_dir` contains files from **multiple** [supported file format](#supported_file_formats)
     Default value is `documentation`.
 - `stubs_parent_url`
-    Parent url path relative to the root url for the configuration stubs.
+    Parent url path, relative to the root url, for the configuration stubs.
     Use an empty string (`""`) to specify the root url.
     Default value is `configurations`.
+    
+    Example: 
+    If the root url is `www.examplesite.org` and `stubs_parent_url` is set to `configurations/stubs`, then a potential configuration stub named `stub1` will be added to the URL: `www.examplesite.org/configurations/stubs/stub1`
 - `stubs_nav_path`
     '/'-separated path defining where the configuration stubs appear in the site navigation.
     Each segment corresponds to a section in the navigation hierarchy.
     Use an empty string (`""`) to place the stubs directly at the top level of the navigation.
-    By default, the value is derived from `stubs_parent_url` by capitalizing each path segment and 
-    replacing undersores with spaces.
-    For example, a `stubs_parent_url` set to `custom/navigation/configuration_stubs` becomes `Custom/Navigation/Configuration stubs`, 
-    placing the configuration stubs inside the `Configuration stubs` subsection, within the `Navigation` navigation section, under the top-level `Custom` Section.
+    By default, the value is derived from `stubs_parent_url` by capitalizing each path segment and by replacing underscores with spaces.
+
+    Example 1:
+    If `stubs_nav_path` is set to `Configurations/Stubs`, the configuration stubs will be placed inside the `Stubs` subsection, under the top-level `Configurations` Section of the site navigation.
+
+    Example 2:
+    If no `stubs_nav_path` is specified and `stubs_parent_url` is set to `custom/navigation/configuration_stubs`, the `stubs_nav_path` becomes `Custom/Navigation/Configuration stubs`, placing the configuration stubs inside the `Configuration stubs` subsection, within the `Navigation` section, under the top-level `Custom` Section of the site navigation.
 
 ## MkDocs wrapper
 This plugin also installs a `mkdocs` wrapper executable

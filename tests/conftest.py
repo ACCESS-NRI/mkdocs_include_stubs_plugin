@@ -25,14 +25,19 @@ def mock_files():
 
 
 @pytest.fixture
-def mock_mkdocs_config():
-    mkdocs_config = MagicMock()
-    mkdocs_config.get.return_value = None
-    return mkdocs_config
+def create_mock_mkdocs_config():
+    """Factory function to create a mock MkDocs config."""
+    def _config(**kwargs):
+        mock_mkdocs_config = MagicMock(**kwargs)
+        mock_mkdocs_config.__getitem__.side_effect = lambda key, default=None: kwargs.get(key, default)
+        mock_mkdocs_config.get.side_effect = lambda key, default=None: kwargs.get(key, default)
+        return mock_mkdocs_config
+    return _config
 
 
 @pytest.fixture
-def mock_section(mock_mkdocs_config):
+def mock_section(create_mock_mkdocs_config):
+    mock_mkdocs_config = create_mock_mkdocs_config()
     return Section(
         title="Root",
         children=[

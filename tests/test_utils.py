@@ -2,7 +2,7 @@
 
 import logging
 from subprocess import CalledProcessError
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, mock_open
 
 import pytest
 from requests import RequestException
@@ -32,8 +32,8 @@ from include_configuration_stubs.utils import (
     get_default_branch_from_remote_repo,
     remove_local_branch_from_refs,
     run_command,
+    get_dest_uri_for_local_stub,
 )
-
 
 
 @pytest.fixture(autouse=True)
@@ -44,6 +44,7 @@ def silence_logs():
 @pytest.fixture
 def mock_git_refs():
     pass
+
 
 def test_run_command(fp):
     """Test the run_command function."""
@@ -84,7 +85,9 @@ def test_check_is_installed_not_found():
 )
 @patch("include_configuration_stubs.utils.get_local_branch")
 @patch("include_configuration_stubs.utils.remove_local_branch_from_refs")
-def test_get_git_refs(mock_remove_local_branch_from_refs, mock_get_local_branch, fp, ref_type):
+def test_get_git_refs(
+    mock_remove_local_branch_from_refs, mock_get_local_branch, fp, ref_type
+):
     """Test the get_git_refs function."""
     if ref_type == GitRefType.BRANCH:
         refs_flag = "--heads"
@@ -96,22 +99,29 @@ def test_get_git_refs(mock_remove_local_branch_from_refs, mock_get_local_branch,
     repo_url = f"https://github.com/{repo}"
     pattern = "random-pattern"
     expected_output = ["sha1", "sha2", "sha3"]
-    command_output = "sha1\trefs/heads/main\nsha2\trefs/heads/dev\nsha3\trefs/heads/branch1"
-    fp.register(["git", "ls-remote", refs_flag, repo_url, pattern], stdout=command_output)
+    command_output = (
+        "sha1\trefs/heads/main\nsha2\trefs/heads/dev\nsha3\trefs/heads/branch1"
+    )
+    fp.register(
+        ["git", "ls-remote", refs_flag, repo_url, pattern], stdout=command_output
+    )
     result = get_git_refs(repo, pattern, ref_type)
     assert result == expected_output
     assert ["git", "ls-remote", refs_flag, repo_url, pattern] in fp.calls
 
 
 @pytest.mark.parametrize(
-    "response_json, response_raise, expected_output",
+    "is_remote_stub, response_json, response_raise, os_listdir_output, expected_output",
     [
         (
+            True,
             None,
             True,
             None,
-        ),  # requests_error
+            None,
+        ),  # remote_requests_error
         (
+            True,
             [
                 {"name": "name_without_extensionmd"},
                 {"name": "name_without_extensionhtml"},
@@ -119,65 +129,219 @@ def test_get_git_refs(mock_remove_local_branch_from_refs, mock_get_local_branch,
             ],
             False,
             None,
-        ),  # no_extension
+            None,
+        ),  # remote_no_extension
         (
+            False,
+            None,
+            False,
+            [
+                "name_without_extensionmd",
+                "name_without_extensionhtml",
+                "name_with_other_extension.jpg",
+            ],
+            None,
+        ),  # local_no_extension
+        (
+            True,
             [
                 {"name": "name_with_extension.md"},
                 {"name": "name_with_not_supported_extension.jpg"},
             ],
             False,
+            None,
             "name_with_extension.md",
-        ),  # multiple_files_valid
+        ),  # remote_multiple_files_valid
         (
+            False,
+            None,
+            False,
+            [
+                "name_with_extension.md",
+                "name_with_not_supported_extension.jpg",
+            ],
+            "name_with_extension.md",
+        ),  # local_multiple_files_valid
+        (
+            True,
             [
                 {"name": "name_with_extension.md"},
                 {"name": "name_with_supported_extension.html"},
             ],
             False,
             None,
-        ),  # multiple_supported_files
+            None,
+        ),  # remote_multiple_supported_files
         (
+            False,
+            None,
+            False,
+            [
+                "name_with_extension.md",
+                "name_with_supported_extension.html",
+            ],
+            None,
+        ),  # local_multiple_supported_files
+        (
+            True,
             [
                 {"name": "name_with_extension.md"},
                 {"name": "name_with_supported_extension.md"},
             ],
             False,
             None,
-        ),  # same_supported_files
+            None,
+        ),  # remote_same_supported_files
         (
+            False,
+            None,
+            False,
+            [
+                "name_with_extension.md",
+                "name_with_supported_extension.md",
+            ],
+            None,
+        ),  # local_same_supported_files
+        (
+            True,
             [{"name": "name_with_extension.html"}],
             False,
+            None,
             "name_with_extension.html",
-        ),  # single_file
+        ),  # remote_single_file
+        (
+            False,
+            None,
+            False,
+            ["name_with_extension.html"],
+            "name_with_extension.html",
+        ),  # local_single_file
     ],
     ids=[
-        "requests_error",
-        "no_extension",
-        "multiple_files_valid",
-        "multiple_supported_files",
-        "same_supported_files",
-        "single_file",
+        "remote_requests_error",
+        "remote_no_extension",
+        "local_no_extension",
+        "remote_multiple_files_valid",
+        "local_multiple_files_valid",
+        "remote_multiple_supported_files",
+        "local_multiple_supported_files",
+        "remote_same_supported_files",
+        "local_same_supported_files",
+        "remote_single_file",
+        "local_single_file",
     ],
 )
 @patch("include_configuration_stubs.utils.requests.get")
+@patch("include_configuration_stubs.utils.os.listdir")
 def test_get_config_stub_fname(
-    mock_requests_get, response_json, response_raise, expected_output
+    mock_listdir, mock_requests_get, is_remote_stub, response_json, response_raise, os_listdir_output, expected_output
 ):
     """Test the get_config_stub_fname function."""
-    mock_response = MagicMock()
-    mock_response.json.return_value = response_json
-    if response_raise:
-        mock_response.raise_for_status.side_effect = RequestException
+    if is_remote_stub:
+        mock_response = MagicMock()
+        mock_response.json.return_value = response_json
+        if response_raise:
+            mock_response.raise_for_status.side_effect = RequestException
+        else:
+            mock_response.raise_for_status.side_effect = None
+        mock_requests_get.return_value = mock_response
     else:
-        mock_response.raise_for_status.side_effect = None
-    mock_requests_get.return_value = mock_response
-    ref = "sha1234567"
-    repo = "owner/repo"
-    path = "config/path"
+        mock_listdir.return_value = os_listdir_output
     assert (
-        get_config_stub_fname(ref, repo, path, SUPPORTED_FILE_FORMATS)
+        get_config_stub_fname(
+            stub_dir="config/path",
+            supported_file_formats=SUPPORTED_FILE_FORMATS,
+            is_remote_stub=is_remote_stub,
+            ref="sha1234567",
+            repo="owner/repo",
+        )
         == expected_output
     )
+
+
+@pytest.mark.parametrize(
+    "is_remote_stub, response_text, response_raise, fread_output, expected_output",
+    [
+        (
+            True,
+            "example text",
+            False,
+            None,
+            "example text",
+        ),  # remote_valid
+        (
+            True,
+            "example text",
+            True,
+            None,
+            None,
+        ),  # remote_response_error
+        (
+            False,
+            None,
+            False,
+            "example text",
+            "example text",
+        ),  # local
+    ],
+    ids=[
+            "remote_valid", 
+            "remote_response_error",
+            "local",
+        ],
+)
+@patch("include_configuration_stubs.utils.requests.get")
+def test_get_config_stub_content(
+    mock_response_get, is_remote_stub, response_text, response_raise, fread_output, expected_output
+):
+    """Test the get_config_stub_content function."""
+    stub_dir="config/path"
+    fname="example_name"
+    repo="owner/repo"
+    ref="sha1234567"
+    if is_remote_stub:
+        mock_response = MagicMock()
+        mock_response.text = response_text
+        if response_raise:
+            mock_response.raise_for_status.side_effect = RequestException
+        else:
+            mock_response.raise_for_status.side_effect = None
+        mock_response_get.return_value = mock_response
+        assert get_config_stub_content(
+            stub_dir=stub_dir,
+            fname=fname,
+            is_remote_stub=is_remote_stub,
+            repo=repo,
+            ref=ref,
+        ) == expected_output
+    else:
+        m = mock_open(read_data=fread_output)
+        with patch("include_configuration_stubs.utils.open", m):
+            output = get_config_stub_content(
+                stub_dir=stub_dir,
+                fname=fname,
+                is_remote_stub=is_remote_stub,
+                repo=repo,
+                ref=ref,
+            ) 
+        assert output == expected_output
+        m.assert_called_once_with(f"{stub_dir}/{fname}", "r", encoding="utf-8")
+
+
+@patch(
+    "include_configuration_stubs.utils.get_html_title",
+    return_value="html",
+)
+@patch(
+    "include_configuration_stubs.utils.get_md_title",
+    return_value="md",
+)
+def test_get_config_stub_title(path, expected_output):
+    """
+    Test the get_config_stub_title function.
+    """
+    assert get_config_stub_title("some/path.html", "example_content") == "html"
+    assert get_config_stub_title("some/other/path.md", "example_content") == "md"
 
 
 @pytest.mark.parametrize(
@@ -223,6 +387,11 @@ def test_get_config_stub_fname(
         "no_title",
     ],
 )
+@pytest.mark.parametrize(
+    "is_remote_stub",
+    [True, False],
+    ids=["remote", "local"],
+)
 @patch("include_configuration_stubs.utils.get_config_stub_fname")
 @patch("include_configuration_stubs.utils.get_config_stub_content")
 @patch("include_configuration_stubs.utils.get_config_stub_title")
@@ -234,50 +403,22 @@ def test_get_config_stub(
     content_output,
     title_output,
     expected_output,
+    is_remote_stub,
 ):
     """Test the get_config_stub function."""
     mock_get_fname.return_value = fname_output
     mock_get_content.return_value = content_output
     mock_get_title.return_value = title_output
-    ref = "sha1234567"
-    repo = "owner/repo"
-    path = "config/path"
-    assert get_config_stub(ref, repo, path, SUPPORTED_FILE_FORMATS) == expected_output
-
-
-@pytest.mark.parametrize(
-    "response_text, response_raise, expected_output",
-    [
-        (
-            "example text",
-            False,
-            "example text",
-        ),  # valid
-        (
-            "example text",
-            True,
-            None,
-        ),  # response_error
-    ],
-    ids=["valid", "response_error"],
-)
-@patch("include_configuration_stubs.utils.requests.get")
-def test_get_config_stub_content(
-    mock_response_get, response_text, response_raise, expected_output
-):
-    """Test the get_config_stub_content function."""
-    mock_response = MagicMock()
-    mock_response.text = response_text
-    if response_raise:
-        mock_response.raise_for_status.side_effect = RequestException
-    else:
-        mock_response.raise_for_status.side_effect = None
-    mock_response_get.return_value = mock_response
-    ref = "sha1234567"
-    repo = "owner/repo"
-    path = "config/path"
-    fname = "example_name"
-    assert get_config_stub_content(ref, repo, path, fname) == expected_output
+    assert get_config_stub(
+        stub_dir="config/path",
+        supported_file_formats=SUPPORTED_FILE_FORMATS,
+        is_remote_stub=is_remote_stub,
+        repo="owner/repo",
+        ref="sha1234567",
+    ) == expected_output
+    assert mock_get_fname.call_args.kwargs.get('is_remote_stub') == is_remote_stub
+    if mock_get_content.call_args is not None:
+        assert mock_get_content.call_args.kwargs.get('is_remote_stub') == is_remote_stub
 
 
 def test_get_remote_repo(fp):
@@ -481,7 +622,10 @@ def test_get_repo_from_input_no_input_error(config_input):
         "none_branch_false",
     ],
 )
-@patch("include_configuration_stubs.utils.get_default_branch_from_remote_repo", return_value="default")
+@patch(
+    "include_configuration_stubs.utils.get_default_branch_from_remote_repo",
+    return_value="default",
+)
 @patch("include_configuration_stubs.utils.get_local_branch")
 def test_is_main_website(
     mock_get_local_branch,
@@ -706,22 +850,6 @@ def test_get_md_title(content, expected_output):
     assert get_md_title(content) == expected_output
 
 
-@patch(
-    "include_configuration_stubs.utils.get_html_title",
-    return_value="html",
-)
-@patch(
-    "include_configuration_stubs.utils.get_md_title",
-    return_value="md",
-)
-def test_get_config_stub_title(path, expected_output):
-    """
-    Test the get_config_stub_title function.
-    """
-    assert get_config_stub_title("some/path.html", "example_content") == "html"
-    assert get_config_stub_title("some/other/path.md", "example_content") == "md"
-
-
 @pytest.mark.parametrize(
     "path, expected_output",
     [
@@ -766,7 +894,7 @@ def test_add_navigation_hierarchy_navigation_input(mock_navigation):
     assert root_item.items[-1].children[0].title == "Section 2"
 
 
-def test_add_pages_to_nav_no_section_creation(mock_mkdocs_config, mock_navigation):
+def test_add_pages_to_nav_no_section_creation(mock_navigation):
     """
     Test the add_pages_to_nav function when all the subsections are present.
     """
@@ -784,7 +912,7 @@ def test_add_pages_to_nav_no_section_creation(mock_mkdocs_config, mock_navigatio
         assert page.parent == nav.items[0].children[1]
 
 
-def test_add_pages_to_nav_section_created(mock_mkdocs_config, mock_navigation):
+def test_add_pages_to_nav_section_created(mock_navigation):
     """
     Test the add_pages_to_nav function when the section needs to be created.
     """
@@ -803,7 +931,7 @@ def test_add_pages_to_nav_section_created(mock_mkdocs_config, mock_navigation):
         assert page.parent == nav.items[0].children[2]
 
 
-def test_add_pages_to_nav_root(mock_mkdocs_config, mock_navigation):
+def test_add_pages_to_nav_root(mock_navigation):
     """
     Test the add_pages_to_nav function when the pages are added to the root navigation.
     """
@@ -816,7 +944,6 @@ def test_add_pages_to_nav_root(mock_mkdocs_config, mock_navigation):
     assert nav.items[-2:] == pages
     for page in pages:
         assert isinstance(page.parent, MagicMock)
-
 
 
 @pytest.mark.parametrize(
@@ -867,17 +994,14 @@ def test_get_default_branch_from_remote_repo(
         (
             "some_branch",
             [
-                ["sha1", "some/repo/ref1"], 
-                ["sha2", "some/repo/ref2"], 
-                ["sha3", "some/repo/ref3"]
+                ["sha1", "some/repo/ref1"],
+                ["sha2", "some/repo/ref2"],
+                ["sha3", "some/repo/ref3"],
             ],
         ),  # no_local_branch_in_refs
         (
             "ref2",
-            [
-                ["sha1", "some/repo/ref1"],
-                ["sha3", "some/repo/ref3"]
-            ],
+            [["sha1", "some/repo/ref1"], ["sha3", "some/repo/ref3"]],
         ),  # local_branch_in_refs
     ],
     ids=[
@@ -890,9 +1014,30 @@ def test_remove_local_branch_from_refs(local_branch, expected_output):
     Test the remove_local_branch_from_refs function.
     """
     refs = [
-        ["sha1", "some/repo/ref1"], 
-        ["sha2", "some/repo/ref2"], 
-        ["sha3", "some/repo/ref3"]
+        ["sha1", "some/repo/ref1"],
+        ["sha2", "some/repo/ref2"],
+        ["sha3", "some/repo/ref3"],
     ]
     remove_local_branch_from_refs(refs, local_branch)
     assert refs == expected_output
+
+
+@pytest.mark.parametrize(
+    "use_directory_urls, expected_output",
+    [
+        (True, "parent/url/example_stub/index.html"), # use_directory_urls_true
+        (False, "parent/url/example_stub") # use_directory_urls_false
+    ],
+    ids=[
+        "use_directory_urls_true",
+        "use_directory_urls_false",
+    ],
+)
+def test_get_dest_uri_for_local_stub(use_directory_urls, expected_output):
+    """
+    Test the get_dest_uri_for_local_stub function.
+    """
+    stub_fname = "example_stub.md"
+    stubs_parent_url = "parent/url"
+    output = get_dest_uri_for_local_stub(stub_fname, stubs_parent_url, use_directory_urls, SUPPORTED_FILE_FORMATS)
+    assert output == expected_output

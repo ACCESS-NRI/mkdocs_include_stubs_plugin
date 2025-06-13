@@ -28,12 +28,13 @@ GITHUB_SSH = "git@github.com:"
 
 ConfigStub = namedtuple("ConfigStub", ["fname", "title", "content"])
 
+
 def run_command(command: Sequence[str]) -> str:
     """
     Run a command by capturing stdout and stderr.
     If the command fails, print the error.
     if get_output is True, return the command output as a string.
-    
+
     Args:
         command: Sequence of Str
             The command to run.
@@ -102,9 +103,9 @@ def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[str]:
     # Print all tags in the repository
     command = ["git", "ls-remote", refs_flag, repo_url, pattern]
     output = run_command(command)
-    splitted_output = [s.split('\t') for s in output.split('\n')]
-    # # Exclude the current local branch from the output if present, 
-    # because its files need to be added directly from the local branch, to 
+    splitted_output = [s.split("\t") for s in output.split("\n")]
+    # # Exclude the current local branch from the output if present,
+    # because its files need to be added directly from the local branch, to
     # allow for the 'serve' command to track changes to those files
     local_branch = get_local_branch()
     remove_local_branch_from_refs(splitted_output, local_branch)
@@ -114,40 +115,53 @@ def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[str]:
 
 
 def get_config_stub_fname(
-    ref: str, repo: str, stub_dir: str, supported_file_formats: tuple[str, ...]
+    stub_dir: str,
+    supported_file_formats: tuple[str, ...],
+    is_remote_stub: bool = True,
+    repo: Optional[str] = None,
+    ref: Optional[str] = None,
 ) -> Optional[str]:
     """
     Get the name of the configuration stub file from the GitHub repository.
-    If the given git ref includes the specified stub_dir containing exactly one
-    file in a supported format, return the stub name.
+    If is_remote_stub is False, it will get the configuration stub name from a local file.
+    If the specified stub_dir contains exactly one file in a supported format, return the stub name.
 
     Args:
-        ref: Str
-            The git SHA.
-        repo: Str
-            The GitHub Repository in the format OWNER/REPO.
         stub_dir: Str
             Path to the directory expected to contain the config stub in a supported format.
         supported_file_formats: Tuple of Str
             Tuple of supported file formats.
+        is_remote_stub: Bool
+            If True, the function will try to fetch the stub from a remote GitHub repository.
+            If False, it will look for a local file.
+        repo: Str
+            The GitHub Repository to fetch the stub from, when is_remote_stub = True.
+            When is_remote_stub = False, this parameter is ignored.
+        ref: Str
+            The git SHA to fetch the stub from, when is_remote_stub = True.
+            When is_remote_stub = False, this parameter is ignored.
 
     Returns:
         Str
             The configuration stub filename.
     """
-    api_url = f"https://api.github.com/repos/{repo}/contents/{stub_dir}"
-    params = {"ref": ref}
-    try:
-        resp = requests.get(api_url, params=params)
-        resp.raise_for_status()
-        entries = resp.json()
-    except requests.RequestException:
-        return None
+    if is_remote_stub:
+        api_url = f"https://api.github.com/repos/{repo}/contents/{stub_dir}"
+        params = {"ref": ref}
+        try:
+            resp = requests.get(api_url, params=params)
+            resp.raise_for_status()
+            entries = resp.json()
+        except requests.RequestException:
+            return None
+        files = [e["name"] for e in entries]
+    else:
+        files = os.listdir(stub_dir)
     stubs = [
-        e["name"]
-        for e in entries
+        file
+        for file in files
         for suffix in supported_file_formats
-        if e["name"].endswith(suffix)
+        if file.endswith(suffix)
     ]
     if len(stubs) != 1:
         return None
@@ -155,32 +169,46 @@ def get_config_stub_fname(
 
 
 def get_config_stub_content(
-    ref: str, repo: str, stub_dir: str, fname: str
+    stub_dir: str,
+    fname: str,
+    is_remote_stub: bool = True,
+    repo: Optional[str] = None,
+    ref: Optional[str] = None,
 ) -> Optional[str]:
     """
     Get the content of the configuration stub from the GitHub repository.
+    If is_remote_stub is False, it will get the configuration stub content from a local file.
 
     Args:
-        ref: Str
-            The git SHA.
-        repo: Str
-            The GitHub Repository in the format OWNER/REPO.
         stub_dir: Str
             Path to the directory expected to contain the config stub in a supported format.
         fname: Str
             The name of the configuration stub file.
+        is_remote_stub: Bool
+            If True, the function will try to fetch the stub from a remote GitHub repository.
+            If False, it will look for a local file.
+        repo: Str
+            The GitHub Repository to fetch the stub from, when is_remote_stub = True.
+            When is_remote_stub = False, this parameter is ignored.
+        ref: Str
+            The git SHA to fetch the stub from, when is_remote_stub = True.
+            When is_remote_stub = False, this parameter is ignored.
 
     Returns:
         Str
             The configuration stub content.
     """
-    raw_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{stub_dir}/{fname}"
-    try:
-        raw_resp = requests.get(raw_url)
-        raw_resp.raise_for_status()
-        return raw_resp.text
-    except requests.RequestException:
-        return None
+    if is_remote_stub:
+        raw_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{stub_dir}/{fname}"
+        try:
+            raw_resp = requests.get(raw_url)
+            raw_resp.raise_for_status()
+            return raw_resp.text
+        except requests.RequestException:
+            return None
+    else:
+        with open(os.path.join(stub_dir, fname), "r", encoding="utf-8") as f:
+            return f.read()
 
 
 def get_config_stub_title(path: str, content: str) -> Optional[str]:
@@ -205,34 +233,53 @@ def get_config_stub_title(path: str, content: str) -> Optional[str]:
 
 
 def get_config_stub(
-    ref: str,
-    repo: str,
     stub_dir: str,
     supported_file_formats: tuple[str, ...],
+    is_remote_stub: bool = True,
+    repo: Optional[str] = None,
+    ref: Optional[str] = None,
 ) -> Optional[ConfigStub]:
     """
     Get the config stub name, content and title formatted as a ConfigStub namedtuple.
+    If is_remote_stub is False, it will get the configuration stub name from a local file.
 
     Args:
-        ref: Str
-            The git SHA.
-        repo: Str
-            The GitHub Repository in the format OWNER/REPO.
         stub_dir: Str
-            Path to the directory expected to contain a single file in a supported format.
+            Path to the directory expected to contain the config stub in a supported format.
         supported_file_formats: Tuple of Str
             Tuple of supported file formats.
+        is_remote_stub: Bool
+            If True, the function will try to fetch the stub from a remote GitHub repository.
+            If False, it will look for a local file.
+        repo: Str
+            The GitHub Repository to fetch the stub from, when is_remote_stub = True.
+            When is_remote_stub = False, this parameter is ignored.
+        ref: Str
+            The git SHA to fetch the stub from, when is_remote_stub = True.
+            When is_remote_stub = False, this parameter is ignored.
 
     Returns:
         ConfigStub
             The ConfigStub namedtuple containing the config stub name, content and title.
     """
     # Get stub filename
-    stub_name = get_config_stub_fname(ref, repo, stub_dir, supported_file_formats)
+    stub_name = get_config_stub_fname(
+        stub_dir=stub_dir,
+        supported_file_formats=supported_file_formats,
+        is_remote_stub=is_remote_stub,
+        repo=repo,
+        ref=ref
+    )
     if stub_name is None:
         return None
     # Get stub content
-    stub_content = get_config_stub_content(ref, repo, stub_dir, stub_name)
+    stub_content = get_config_stub_content(
+        stub_dir=stub_dir,
+        fname=stub_name,
+        is_remote_stub=is_remote_stub,
+        repo=repo,
+        ref=ref,
+    )
     if stub_content is None:
         return None
     # # Get stub title
@@ -285,7 +332,11 @@ def get_repo_from_input(repo_config_input: Optional[str]) -> str:
             A string in the format 'OWNER/REPO'.
     """
     try:
-        repo = get_remote_repo_from_local_repo() if not repo_config_input else repo_config_input
+        repo = (
+            get_remote_repo_from_local_repo()
+            if not repo_config_input
+            else repo_config_input
+        )
     except subprocess.SubprocessError as e:
         raise ValueError(
             f"No GitHub repository specified. Failed to retrieve the GitHub repository from local directory: {e.stderr.strip()}"
@@ -297,7 +348,7 @@ def get_repo_from_input(repo_config_input: Optional[str]) -> str:
     return repo
 
 
-def is_main_website(main_branch_config_input: str | None, repo: str) -> bool:
+def is_main_website(main_branch_config_input: Optional[str], repo: str) -> bool:
     """
     Determine whether the build is intended for the main website.
 
@@ -495,7 +546,7 @@ def add_pages_to_nav(
         section_titles: List of Str
             The titles defining the hierarchical structure of the navigation Section where to place the stubs pages.
     """
-    if not section_titles[0]: # Case when the stubs_nav_path is empty (root nav path)
+    if not section_titles[0]:  # Case when the stubs_nav_path is empty (root nav path)
         section_titles = []
     current_parent: Section | Navigation = nav
     current_children = nav.items
@@ -511,7 +562,7 @@ def add_pages_to_nav(
         )
         # If no Section is found, create the navigation hierarchy
         if section is None:
-            hierarchy = ' -> '.join([section_titles[it-1], title])
+            hierarchy = " -> ".join([section_titles[it - 1], title])
             logger.warning(
                 f"Section {hierarchy!r} not found in the site navigation. "
                 f"Creating a new {title!r} section for the configuration stubs."
@@ -532,6 +583,7 @@ def add_pages_to_nav(
     else:
         current_children = current_parent.items
     current_children.extend(pages)
+
 
 def get_default_branch_from_remote_repo(remote_repo: str) -> str:
     """
@@ -554,6 +606,7 @@ def get_default_branch_from_remote_repo(remote_repo: str) -> str:
         )
     return response.json()["default_branch"]
 
+
 def get_local_branch() -> str:
     """
     Get the name of the current local branch.
@@ -565,6 +618,7 @@ def get_local_branch() -> str:
     command = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
     return run_command(command)
 
+
 def remove_local_branch_from_refs(refs: list[list[str]], local_branch: str) -> None:
     """
     Remove the local branch from the list of refs if it is present.
@@ -575,7 +629,37 @@ def remove_local_branch_from_refs(refs: list[list[str]], local_branch: str) -> N
         local_branch: Str
             The name of the current local branch.
     """
-    for i,ref in enumerate(refs):
+    for i, ref in enumerate(refs):
         if ref[1].endswith(f"/{local_branch}"):
             del refs[i]
             break
+
+def get_dest_uri_for_local_stub(
+    stub_fname: str, 
+    stubs_parent_url: str, 
+    use_directory_urls: bool,
+    supported_file_formats: tuple[str, ...]
+) -> str:
+    """
+    Get the destination URI for a local stub file.
+
+    Args:
+        stub_fname: Str
+            The name of the stub file.
+        stubs_parent_url: Str
+            The parent URL for the stubs on the site.
+        use_directory_urls: Bool
+            The use_directory_urls MkDocs config option.
+        supported_file_formats: Tuple of Str
+            Tuple of supported file formats.
+
+    Returns:
+        Str
+            The destination URI for the local stub file.
+    """
+    for suffix in supported_file_formats: # pragma: no branch
+        if stub_fname.endswith(suffix): # pragma: no branch
+            stub_fname_no_suffix = stub_fname.removesuffix(suffix)
+            break
+    dest_uri = os.path.join(stubs_parent_url, stub_fname_no_suffix)
+    return dest_uri if not use_directory_urls else os.path.join(dest_uri,"index.html")
