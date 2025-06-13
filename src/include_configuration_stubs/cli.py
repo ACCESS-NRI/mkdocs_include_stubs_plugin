@@ -13,6 +13,7 @@ from include_configuration_stubs.utils import get_repo_from_input, run_command, 
 PLUGIN_NAME = "include-configuration-stubs"
 ENTRY_POINT_NAME = "mkdocs"
 SUPPORTED_COMMANDS = ("build", "serve")
+ENV_VARIABLE_NAME = "MKDOCS_INCLUDE_CONFIGURATION_STUBS_ADD_LOCAL_STUB"
 
 logger = get_custom_logger(PLUGIN_NAME)
 
@@ -225,5 +226,6 @@ def main():
                 # Run the default mkdocs command with the mkdocs config and contents from
                 # the specified repo and branch
                 default_mkdocs_arguments.extend(["-f", mkdocs_yaml_path])
+                os.environ[ENV_VARIABLE_NAME] = '1'
                 run_default_mkdocs_command(default_mkdocs_arguments)
                 

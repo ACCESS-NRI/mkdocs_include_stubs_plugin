@@ -25,6 +25,7 @@ from include_configuration_stubs.utils import (
     get_dest_uri_for_local_stub,
 )
 from include_configuration_stubs.logging import get_custom_logger
+from include_configuration_stubs.cli import ENV_VARIABLE_NAME
 
 logger = get_custom_logger(__name__)
 SUPPORTED_FILE_FORMATS = (".md", ".html")
@@ -182,7 +183,6 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
                 "No uniquely identifiable local configuration stub found in the current directory. Skipping local stub addition. "
                 "This may occur if no stub files are present, or if multiple candidates exist, making selection ambiguous."
             )
-            self.local_stub_abs_path = None
 
     def on_files(self, files: Files, config: MkDocsConfig) -> Files:
         """
@@ -196,12 +196,15 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         stubs_parent_url = self.config["stubs_parent_url"]
         # If a local stub is present, add it to the files so it's included in the site and
         # it is updated live when using `mkdocs serve ...`
-        self.add_local_stub_to_site(
-            config,
-            stubs_dir,
-            stubs_parent_url,
-            files,
-        )
+        # Add the local stub only if a local mkdocs.yml was not found and the mkdocs.yml is 
+        # taken from the remote repo
+        if os.environ.get(ENV_VARIABLE_NAME, None):
+            self.add_local_stub_to_site(
+                config,
+                stubs_dir,
+                stubs_parent_url,
+                files,
+            )
         # All other stubs are added from the Git repository:
         # For each ref, add its configuration stubs to the site, if present
         for ref in refs:
@@ -235,7 +238,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
     def on_serve(
         self, server: LiveReloadServer, config: MkDocsConfig, builder: Callable
     ) -> LiveReloadServer:
-        if self.local_stub_abs_path:
+        if hasattr(self, "local_stub_abs_path"):
             # Add the local configuration stub file to the live-reload server
             server.watch(self.local_stub_abs_path, builder) # type: ignore[arg-type]
         return server

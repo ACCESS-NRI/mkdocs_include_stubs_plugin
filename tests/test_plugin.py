@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import logging
 
-from include_configuration_stubs.plugin import IncludeConfigurationStubsPlugin, logger
+from include_configuration_stubs.plugin import IncludeConfigurationStubsPlugin, logger, ENV_VARIABLE_NAME
 from include_configuration_stubs.utils import ConfigStub
 
 @pytest.fixture(autouse=True)
@@ -228,14 +228,23 @@ def test_add_local_stub_to_site(
         assert plugin.pages[2].file == files[1]
         assert plugin.pages[2].title == config_stub_output.title
         # Check that the local stub absolute path is set correctly
-        assert plugin.local_stub_abs_path == "stub/file/abs/path/key" 
-    else:
-        assert plugin.local_stub_abs_path is None
+        assert plugin.local_stub_abs_path == "stub/file/abs/path/key"
 
+
+@pytest.mark.parametrize(
+    "env_variable_value",
+    ["1", ""],
+    ids=[
+        "env_variable_set",
+        "no_env_variable",
+    ],
+)
 def test_on_files(
     create_plugin,
     mock_files,
     create_mock_mkdocs_config,
+    env_variable_value,
+    monkeypatch,
 ):
     """Test the on_files method."""
     files = mock_files()
@@ -243,9 +252,13 @@ def test_on_files(
     plugin.get_git_refs_for_wesbsite = MagicMock(return_value={"ref1", "ref2"})
     plugin.add_remote_stub_to_site = MagicMock()
     plugin.add_local_stub_to_site = MagicMock()
+    monkeypatch.setenv(ENV_VARIABLE_NAME, env_variable_value)
     plugin.on_files(files, create_mock_mkdocs_config())
     assert plugin.add_remote_stub_to_site.call_count == 2
-    plugin.add_local_stub_to_site.assert_called_once()
+    if env_variable_value:
+        plugin.add_local_stub_to_site.assert_called_once()
+    else:
+        plugin.add_local_stub_to_site.assert_not_called()
     
 
 
@@ -281,23 +294,25 @@ def test_on_nav(mock_set_stubs_nav_path, mock_files, create_plugin, create_mock_
 
 
 @pytest.mark.parametrize(
-    "local_stub_abs_path",
-    ["some/abs/path", None],
+    "has_local_stub_abs_path",
+    [True, False],
     ids=[
         "valid_local_path",
-        "none_local_path",
+        "no_local_path",
     ],
 )
-def test_on_serve(create_plugin, create_mock_mkdocs_config, local_stub_abs_path):
+def test_on_serve(create_plugin, create_mock_mkdocs_config, has_local_stub_abs_path):
     """Test the on_serve method."""
-    plugin = create_plugin(repo="example_repo", local_stub_abs_path=local_stub_abs_path)
+    plugin = create_plugin(repo="example_repo")
+    if has_local_stub_abs_path:
+        plugin.local_stub_abs_path = "local/stub/abs/path"
     server = MagicMock()
     builder = MagicMock()
     plugin.on_serve(server, create_mock_mkdocs_config(), builder)
     # Check that the on_serve method was called
-    if local_stub_abs_path:
+    if has_local_stub_abs_path:
         server.watch.assert_called_once_with(
-            local_stub_abs_path, builder
+            "local/stub/abs/path", builder
         )
     else:
         server.watch.assert_not_called()
