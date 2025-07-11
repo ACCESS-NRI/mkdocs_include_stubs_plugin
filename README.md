@@ -59,7 +59,7 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
     - Refs that do not contain the `stubs_dir` path
     - Refs whose `stubs_dir` contains **multiple files** of the same [supported file format](#supported_file_formats)
     - Refs whose `stubs_dir` contains files from **multiple** [supported file format](#supported_file_formats)
-    Default value is `documentation`.
+    Default value is `documentation/stub`.
 - `stubs_parent_url`
     Parent url path, relative to the root url, for the configuration stubs.
     Use an empty string (`""`) to specify the root url.

@@ -8,7 +8,7 @@ T = TypeVar("T")
 
 DEFAULT_PATTERN_MAIN_WEBSITE = r"release-*"
 DEFAULT_PATTERN_PREVIEW_WEBSITE = r"dev-*"
-DEFAULT_STUBS_DIR_PATH = "documentation"
+DEFAULT_STUBS_DIR_PATH = "documentation/stub"
 DEFAULT_STUBS_WEBSITE_DIR_PATH = "configurations"
 
 
