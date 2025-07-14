@@ -101,7 +101,9 @@ def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[str]:
     else:
         refs_flag = "--heads --tags"
     # Print all tags in the repository
-    command = ["git", "ls-remote", refs_flag, repo_url, pattern]
+    # Split the pattern so it's treated as multiple arguments
+    pattern_list = pattern.split()
+    command = ["git", "ls-remote", refs_flag, repo_url, *pattern_list]
     output = run_command(command)
     splitted_output = [s.split("\t") for s in output.split("\n")]
     # # Exclude the current local branch from the output if present,

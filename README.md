@@ -29,7 +29,8 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
     Configuration parameters for the main website.
     Sub-parameters:
     - `pattern`
-        Glob pattern for _Git_ refs to be included when searching for configuration stubs.
+        Git Glob pattern for _Git_ refs to be included when searching for configuration stubs.
+        To match multiple patterns, separate them with a space (e.g., "first-pattern second-pattern").
         Default value is `release-*`.
     - `ref_type`
         Type of _Git_ ref to be used when searching for configuration stubs.
@@ -43,7 +44,8 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
     **Note**: The `main_website` configurations are also included when building preview websites. To exclude the main website from the preview websites, set `no_main` to `true`.
     Sub-parameters:
     - `pattern`
-        Glob pattern for _Git_ refs to be included when searching for configuration stubs.
+        Git Glob pattern for _Git_ refs to be included when searching for configuration stubs.
+        To match multiple patterns, separate them with a space (e.g., "first-pattern second-pattern").
         Default value is `dev-*`.
     - `ref_type`
         Type of _Git_ ref to be used when searching for configuration stubs.

@@ -127,7 +127,8 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         else:
             logger.warning(
                 f"No uniquely identifiable configuration stub found in {stubs_dir!r} for Git ref {ref!r}. Skipping this reference. "
-                "This may occur if no stub files are present, or if multiple candidates exist, making selection ambiguous."
+                f"This may happen if the {stubs_dir!r} directory is missing, or if no stub files or multiple conflicting candidates "
+                "are present within it."
             )
 
     def add_local_stub_to_site(
@@ -180,8 +181,9 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
             )
         else:
             logger.warning(
-                "No uniquely identifiable local configuration stub found in the current directory. Skipping local stub addition. "
-                "This may occur if no stub files are present, or if multiple candidates exist, making selection ambiguous."
+                f"No uniquely identifiable configuration stub found in the local {stubs_dir!r} directory. Skipping addition of local stub. "
+                f"This may happen if the {stubs_dir!r} directory is missing, or if no stub files or multiple conflicting candidates "
+                "are present within it."
             )
 
     def on_files(self, files: Files, config: MkDocsConfig) -> Files:
