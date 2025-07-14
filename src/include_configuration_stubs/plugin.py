@@ -79,91 +79,57 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         logger.info(f"Found the following Git references (Git SHAs): {all_refs}.")
         return all_refs
 
-    def add_remote_stub_to_site(
+    def add_stub_to_site(
         self,
         config: MkDocsConfig,
         stubs_dir: str,
-        ref: str,
         stubs_parent_url: str,
         files: Files,
+        is_remote_stub: bool,
+        ref: str = None,
     ) -> None:
         """
-        Add a configuration stub from the remote repository ref to the site.
+        Add a configuration stub to the site.
+        If `is_remote_stub` is True, it will fetch the stub from the remote repository,
+        otherwise it will fetch it from the local directory.
         """
         # Get the remote configuration stub file from the repository ref
         config_stub = get_config_stub(
             stub_dir=stubs_dir,
             supported_file_formats=SUPPORTED_FILE_FORMATS,
-            is_remote_stub=True,
+            is_remote_stub=is_remote_stub,
             repo=self.repo,
             ref=ref,
         )
         if config_stub:
-            #  Create the configuration stub file
-            config_stub_file = File.generated(
-                config=config,
-                src_uri=config_stub.fname,
-                content=config_stub.content,
-            )
-            # Change the destination path by prepending the stubs_parent_url
-            config_stub_file.dest_path = os.path.join(
-                stubs_parent_url, config_stub_file.dest_path
-            )
-            #  Make the file unique
-            make_file_unique(config_stub_file, files)
-            #  Include the configuration stub file to the site
-            files.append(config_stub_file)
-            #  Create a page for the configuration stub file
-            config_stub_page = Page(
-                config=config,
-                title=config_stub.title or config_stub_file.src_uri.capitalize(),
-                file=config_stub_file,
-            )
-            self.pages.append(config_stub_page)
-            logger.info(
-                f"Configuration stub {config_stub.fname!r} found in Git ref {ref!r}. "
-                f"Added related page {config_stub_page.title!r} at {config_stub_file.dest_path!r}."
-            )
-        else:
-            logger.warning(
-                f"No uniquely identifiable configuration stub found in {stubs_dir!r} for Git ref {ref!r}. Skipping this reference. "
-                f"This may happen if the {stubs_dir!r} directory is missing, or if no stub files or multiple conflicting candidates "
-                "are present within it."
-            )
-
-    def add_local_stub_to_site(
-        self,
-        config: MkDocsConfig,
-        stubs_dir: str,
-        stubs_parent_url: str,
-        files: Files,
-    ) -> None:
-        """
-        Add a local configuration stub to the site.
-        """
-        # Get the local configuration stub file
-        config_stub = get_config_stub(
-            stub_dir=stubs_dir,
-            supported_file_formats=SUPPORTED_FILE_FORMATS,
-            is_remote_stub=False,
-        )
-        if config_stub:
-            use_directory_urls = config["use_directory_urls"]
             fname = config_stub.fname
-            #  Add the configuration stub file to the site files
-            config_stub_file = File(
-                path=fname,
-                src_dir=os.path.abspath(stubs_dir),
-                dest_dir=config["site_dir"],
-                use_directory_urls=use_directory_urls,
-                dest_uri=get_dest_uri_for_local_stub(
-                    fname,
-                    stubs_parent_url,
-                    use_directory_urls,
-                    SUPPORTED_FILE_FORMATS,
-                ),
-            )
-            self.local_stub_abs_path = config_stub_file.abs_src_path
+            if is_remote_stub:
+                #  Create the configuration stub file
+                config_stub_file = File.generated(
+                    config=config,
+                    src_uri=fname,
+                    content=config_stub.content,
+                )
+                # Change the destination path by prepending the stubs_parent_url
+                config_stub_file.dest_path = os.path.join(
+                    stubs_parent_url, config_stub_file.dest_path
+                )
+            else:
+                use_directory_urls = config["use_directory_urls"]
+                #  Add the configuration stub file to the site files
+                config_stub_file = File(
+                    path=fname,
+                    src_dir=os.path.abspath(stubs_dir),
+                    dest_dir=config["site_dir"],
+                    use_directory_urls=use_directory_urls,
+                    dest_uri=get_dest_uri_for_local_stub(
+                        fname,
+                        stubs_parent_url,
+                        use_directory_urls,
+                        SUPPORTED_FILE_FORMATS,
+                    ),
+                )
+                self.local_stub_abs_path = config_stub_file.abs_src_path
             #  Make the file unique
             make_file_unique(config_stub_file, files)
             #  Include the configuration stub file to the site
@@ -175,15 +141,23 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
                 file=config_stub_file,
             )
             self.pages.append(config_stub_page)
+            if is_remote_stub:
+                msg_location = f"Git ref {ref!r}"
+            else:
+                msg_location = f"{config_stub_file.src_dir!r}"
             logger.info(
-                f"Local configuration stub {config_stub.fname!r} found in {config_stub_file.src_dir!r}. "
+                f"Configuration stub {config_stub.fname!r} found in {msg_location}. "
                 f"Added related page {config_stub_page.title!r} at {config_stub_file.dest_path!r}."
             )
         else:
+            if is_remote_stub:
+                msg_location = f"{stubs_dir!r} for Git ref {ref!r}. Skipping this reference."
+            else:
+                msg_location = f"the local {stubs_dir!r} directory. Skipping addition of local stub."
             logger.warning(
-                f"No uniquely identifiable configuration stub found in the local {stubs_dir!r} directory. Skipping addition of local stub. "
+                f"No uniquely identifiable configuration stub found in {msg_location} "
                 f"This may happen if the {stubs_dir!r} directory is missing, or if no stub files or multiple conflicting candidates "
-                "are present within it."
+                "are found within it."
             )
 
     def on_files(self, files: Files, config: MkDocsConfig) -> Files:
@@ -201,21 +175,23 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         # Add the local stub only if a local mkdocs.yml was not found and the mkdocs.yml is 
         # taken from the remote repo
         if os.environ.get(ENV_VARIABLE_NAME, None):
-            self.add_local_stub_to_site(
-                config,
-                stubs_dir,
-                stubs_parent_url,
-                files,
+            self.add_stub_to_site(
+                config=config,
+                stubs_dir=stubs_dir,
+                stubs_parent_url=stubs_parent_url,
+                files=files,
+                is_remote_stub=False,
             )
         # All other stubs are added from the Git repository:
         # For each ref, add its configuration stubs to the site, if present
         for ref in refs:
-            self.add_remote_stub_to_site(
-                config,
-                stubs_dir,
-                ref,
-                stubs_parent_url,
-                files,
+            self.add_stub_to_site(
+                config=config,
+                stubs_dir=stubs_dir,
+                stubs_parent_url=stubs_parent_url,
+                files=files,
+                is_remote_stub=True,
+                ref=ref,
             )
         return files
 

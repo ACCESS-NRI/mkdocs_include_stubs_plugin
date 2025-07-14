@@ -130,7 +130,6 @@ def test_get_git_refs_for_wesbsite_preview_no_main_false(
     # Duplicates removed
     assert refs == {"ref1", "ref2"}
 
-
 @pytest.mark.parametrize(
     "config_stub_output",
     [
@@ -142,66 +141,31 @@ def test_get_git_refs_for_wesbsite_preview_no_main_false(
         "None_config_stub",
     ],
 )
-@patch("include_configuration_stubs.plugin.get_config_stub")
-def test_add_remote_stub_to_site(
-    mock_get_config_stub,
-    config_stub_output,
-    create_plugin,
-    mock_files,
-    create_mock_mkdocs_config,
-):
-    """Test the add_remote_stub_to_site method."""
-    files = mock_files([MagicMock()])
-    plugin = create_plugin(repo="example_repo")
-    plugin.pages = [MagicMock(), MagicMock()]
-    mock_get_config_stub.return_value = config_stub_output
-    mock_mkdocs_config = create_mock_mkdocs_config(site_dir="site/dir")
-    plugin.add_remote_stub_to_site(
-        config=mock_mkdocs_config,
-        stubs_dir="some/dir",
-        ref="some_ref",
-        stubs_parent_url="parent/url",
-        files=files,
-    )
-    expected_len = 1 if config_stub_output is None else 2
-    # Check that the config stubs were added to the files
-    assert len(files) == expected_len
-    # Check that the config stub page were added to the pages
-    assert len(plugin.pages) == expected_len + 1
-    if config_stub_output:
-        # Check correctness of config stubs
-        assert files[1].src_uri == config_stub_output.fname
-        assert files[1]._content == config_stub_output.content
-        assert files[1].dest_dir == "site/dir"
-        # Check correctness of pages
-        assert plugin.pages[2].file == files[1]
-        assert plugin.pages[2].title == config_stub_output.title
-
-
 @pytest.mark.parametrize(
-    "config_stub_output",
+    "is_remote_stub",
     [
-        ConfigStub(fname="key", content="value", title="title"),  # valid_config_stub
-        None,  # None_config_stub
+        True,  # remote
+        False,  # local
     ],
     ids=[
-        "valid_config_stub",
-        "None_config_stub",
+        "remote",
+        "local",
     ],
 )
 @patch("include_configuration_stubs.plugin.get_config_stub")
 @patch("include_configuration_stubs.plugin.get_dest_uri_for_local_stub")
 @patch("include_configuration_stubs.plugin.os.path.abspath")
-def test_add_local_stub_to_site(
+def test_add_stub_to_site(
     mock_abspath,
     mock_get_dest_uri_for_local_stub,
     mock_get_config_stub,
     config_stub_output,
+    is_remote_stub,
     create_plugin,
     mock_files,
     create_mock_mkdocs_config,
 ):
-    """Test the add_local_stub_to_site method."""
+    """Test the add_stub_to_site method."""
     files = mock_files([MagicMock()])
     plugin = create_plugin(repo="example_repo")
     plugin.pages = [MagicMock(), MagicMock()]
@@ -209,11 +173,13 @@ def test_add_local_stub_to_site(
     mock_get_dest_uri_for_local_stub.return_value = "dest/uri"
     mock_mkdocs_config = create_mock_mkdocs_config(site_dir="site/dir")
     mock_abspath.return_value = "stub/file/abs/path"
-    plugin.add_local_stub_to_site(
+    plugin.add_stub_to_site(
         config=mock_mkdocs_config,
         stubs_dir="some/dir",
+        ref="some_ref",
         stubs_parent_url="parent/url",
         files=files,
+        is_remote_stub=is_remote_stub,
     )
     expected_len = 1 if config_stub_output is None else 2
     # Check that the config stubs were added to the files
@@ -224,11 +190,14 @@ def test_add_local_stub_to_site(
         # Check correctness of config stubs
         assert files[1].src_uri == config_stub_output.fname
         assert files[1].dest_dir == "site/dir"
+        if is_remote_stub: # Check content only for remote stubs
+            assert files[1]._content == config_stub_output.content
         # Check correctness of pages
         assert plugin.pages[2].file == files[1]
         assert plugin.pages[2].title == config_stub_output.title
         # Check that the local stub absolute path is set correctly
-        assert plugin.local_stub_abs_path == "stub/file/abs/path/key"
+        if not is_remote_stub:
+            assert plugin.local_stub_abs_path == "stub/file/abs/path/key"
 
 
 @pytest.mark.parametrize(
@@ -250,15 +219,13 @@ def test_on_files(
     files = mock_files()
     plugin = create_plugin(repo="example_repo")
     plugin.get_git_refs_for_wesbsite = MagicMock(return_value={"ref1", "ref2"})
-    plugin.add_remote_stub_to_site = MagicMock()
-    plugin.add_local_stub_to_site = MagicMock()
+    plugin.add_stub_to_site = MagicMock()
     monkeypatch.setenv(ENV_VARIABLE_NAME, env_variable_value)
     plugin.on_files(files, create_mock_mkdocs_config())
-    assert plugin.add_remote_stub_to_site.call_count == 2
     if env_variable_value:
-        plugin.add_local_stub_to_site.assert_called_once()
+        assert plugin.add_stub_to_site.call_count == 3
     else:
-        plugin.add_local_stub_to_site.assert_not_called()
+        assert plugin.add_stub_to_site.call_count == 2
     
 
 
