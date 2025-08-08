@@ -92,6 +92,8 @@ def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[str]:
         List of Str
             The list of refs (git sha) that match the pattern for the specified repo.
     """
+    if not pattern:
+        return []
     repo_url = f"https://github.com/{repo}"
     # Set which git refs to select based on the release status
     if ref_type == GitRefType.BRANCH:

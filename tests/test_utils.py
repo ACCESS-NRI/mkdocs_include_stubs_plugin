@@ -83,10 +83,15 @@ def test_check_is_installed_not_found():
     ],
     ids=["ref_type_branch", "ref_type_tag", "ref_type_all"],
 )
+@pytest.mark.parametrize(
+    "pattern",
+    ["random-pattern",""],
+    ids=["non-empty-pattern", "empty-pattern"],
+)
 @patch("include_configuration_stubs.utils.get_local_branch")
 @patch("include_configuration_stubs.utils.remove_local_branch_from_refs")
 def test_get_git_refs(
-    mock_remove_local_branch_from_refs, mock_get_local_branch, fp, ref_type
+    mock_remove_local_branch_from_refs, mock_get_local_branch, fp, ref_type, pattern,
 ):
     """Test the get_git_refs function."""
     if ref_type == GitRefType.BRANCH:
@@ -97,18 +102,21 @@ def test_get_git_refs(
         refs_flag = "--heads --tags"
     repo = "example/repo"
     repo_url = f"https://github.com/{repo}"
-    pattern = "random-pattern"
-    expected_output = ["sha1", "sha2", "sha3"]
-    command_output = (
-        "sha1\trefs/heads/main\nsha2\trefs/heads/dev\nsha3\trefs/heads/branch1"
-    )
-    fp.register(
-        ["git", "ls-remote", refs_flag, repo_url, pattern], stdout=command_output
-    )
-    result = get_git_refs(repo, pattern, ref_type)
-    assert result == expected_output
-    assert ["git", "ls-remote", refs_flag, repo_url, pattern] in fp.calls
-
+    if pattern:
+        expected_output = ["sha1", "sha2", "sha3"]
+        command_output = (
+            "sha1\trefs/heads/main\nsha2\trefs/heads/dev\nsha3\trefs/heads/branch1"
+        )
+        fp.register(
+            ["git", "ls-remote", refs_flag, repo_url, pattern], stdout=command_output
+        )
+        result = get_git_refs(repo, pattern, ref_type)
+        assert result == expected_output
+        assert ["git", "ls-remote", refs_flag, repo_url, pattern] in fp.calls
+    else:
+        expected_output = []
+        result = get_git_refs(repo, pattern, ref_type)
+        assert result == expected_output
 
 @pytest.mark.parametrize(
     "is_remote_stub, response_json, response_raise, os_listdir_output, expected_output",
