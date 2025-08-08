@@ -76,8 +76,9 @@ class ConfigScheme(Config):
 
 def set_default_stubs_nav_path(stubs_parent_url: str) -> str:
     """
-    Set the default stubs navigation path from the stubs_parent_url by by capitalizing each path segment and
-    replacing undersores with spaces.
+    Set the default stubs navigation path from the stubs_parent_url by by
+    capitalizing each path segment, replacing underscores with spaces and
+    forward slashes with 'greater than' (>) symbols.
 
     Args:
         stubs_parent_url: Str
@@ -87,6 +88,6 @@ def set_default_stubs_nav_path(stubs_parent_url: str) -> str:
         Str
             The default stubs navigation path.
     """
-    parts = stubs_parent_url.removesuffix("/").split("/")
-    new_parts = [part.strip().replace("_", " ").capitalize() for part in parts]
-    return "/".join(new_parts)
+    parts = stubs_parent_url.removesuffix("/").removeprefix("/").split("/")
+    new_parts = [part.replace("_", " ").strip().capitalize() for part in parts]
+    return " > ".join(new_parts)

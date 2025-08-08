@@ -479,22 +479,21 @@ def set_stubs_nav_path(
     stubs_parent_url: str,
 ) -> str:
     """
-    Set the path to the stubs in the MkDocs navigation.
+    Set the structure of the stubs in the MkDocs navigation.
 
     Args:
         stubs_nav_path: Str
-            The path to the stubs in the MkDocs navigation.
+            The structure of the stubs in the MkDocs navigation.
         stubs_parent_url: Str
             The parent URL for the stubs.
 
     Returns:
         Str
-            The path to the stubs in the MkDocs navigation.
+            The structure of the stubs in the MkDocs navigation.
     """
     if stubs_nav_path is None:
         return set_default_stubs_nav_path(stubs_parent_url)
-    else:
-        return stubs_nav_path.removesuffix("/")
+    return stubs_nav_path
 
 
 def add_navigation_hierarchy(item: Section | Navigation, titles: list[str]) -> Section:

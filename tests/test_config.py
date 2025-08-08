@@ -10,20 +10,21 @@ from include_configuration_stubs.config import (
     [
         ("configurations", "Configurations"),  # single_segment
         ("", ""),  # empty_string
-        ("my/example/path", "My/Example/Path"),  # multiple_segments
+        ("my/example/path", "My > Example > Path"),  # multiple_segments
         (
             "path_with/under_scores",
-            "Path with/Under scores",
+            "Path with > Under scores",
         ),  # underscores
         (
             "example /  path /with  spaces",
-            "Example/Path/With  spaces",
+            "Example > Path > With  spaces",
         ),  # spaces
-        ("path/", "Path"),  # final_slash
         (
             "path_with/ spaces _ and_/under_scores ",
-            "Path with/Spaces   and /Under scores",
+            "Path with > Spaces   and > Under scores",
         ),  # mixed
+        ("path/", "Path"),  # final_slash
+        ("/path", "Path"),  # initial_slash
     ],
     ids=[
         "single_segment",
@@ -33,6 +34,7 @@ from include_configuration_stubs.config import (
         "spaces",
         "mixed",
         "final_slash",
+        "initial_slash",
     ],
 )
 def test_set_default_stubs_nav_path(stubs_parent_url, expected_output):

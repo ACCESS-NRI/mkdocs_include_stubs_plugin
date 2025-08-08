@@ -67,22 +67,22 @@ def test_on_config(create_plugin, create_mock_mkdocs_config):
 @pytest.mark.parametrize(
     "is_main_website_build",
     [True, False],
-    ids=["main-website-build", "preview-website-build"],
+    ids=["main_website_build", "preview_website_build"],
 )
 @pytest.mark.parametrize(
     "no_main",
     [True, False],
-    ids=["no-main-true", "no-main-false"],
+    ids=["no_main_true", "no_main_false"],
 )
 @pytest.mark.parametrize(
     "main_pattern",
-    ["non-empty", ""],
-    ids=["main-pattern-non-empty", "main-pattern-empty"],
+    ["non_empty", ""],
+    ids=["main_pattern_non_empty", "main_pattern_empty"],
 )
 @pytest.mark.parametrize(
     "preview_pattern",
-    ["non-empty", ""],
-    ids=["preview-pattern-non-empty", "preview-pattern-empty"],
+    ["non_empty", ""],
+    ids=["preview_pattern_non_empty", "preview_pattern_empty"],
 )
 @patch("include_configuration_stubs.plugin.get_git_refs")
 @patch("include_configuration_stubs.plugin.is_main_website")
@@ -246,16 +246,22 @@ def test_on_files(
         assert plugin.add_stub_to_site.call_count == 2
 
 
+@pytest.mark.parametrize(
+    "stubs_nav_path",
+    ["Root > Example > Path", "Root>Example>Path", "", "    "],
+    ids=["space_path","no_space_path", "empty_path", "blank_path"],
+)
 @patch("include_configuration_stubs.plugin.set_stubs_nav_path")
 def test_on_nav(
     mock_set_stubs_nav_path,
     mock_files,
     create_plugin,
     create_mock_mkdocs_config,
-    mock_section,
+    mock_navigation,
+    stubs_nav_path,
 ):
     """Test the on_nav method."""
-    mock_set_stubs_nav_path.return_value = "Root/Example/Path"
+    mock_set_stubs_nav_path.return_value = stubs_nav_path
     # Create a mock plugin
     files = mock_files()
     plugin = create_plugin(repo="example_repo")
@@ -267,24 +273,33 @@ def test_on_nav(
     ]
     plugin.pages = pages
     # Create a mock nav object
-    nav = MagicMock()
-    nav.items = [mock_section]
+    nav = mock_navigation
     # Call the on_nav method
     plugin.on_nav(nav, create_mock_mkdocs_config(), files)
     # Check that the correct sections/pages were added to the nav
-    assert len(nav.items) == 1
-    assert (nav.items[0].title) == "Root"
-    assert len(nav.items[0].children) == 3
-    assert nav.items[0].children[2].title == "Example"
-    assert len(nav.items[0].children[2].children) == 1
-    assert nav.items[0].children[2].children[0].title == "Path"
-    assert nav.items[0].children[2].children[0].children == [
-        pages[1],
-        pages[0],
-        pages[2],
-    ]
-    for page in pages:
-        assert page.parent == nav.items[0].children[2].children[0]
+    if stubs_nav_path.strip():
+        assert len(nav.items) == 1
+        assert (nav.items[0].title) == "Root"
+        assert len(nav.items[0].children) == 3
+        assert nav.items[0].children[2].title == "Example"
+        assert len(nav.items[0].children[2].children) == 1
+        assert nav.items[0].children[2].children[0].title == "Path"
+        assert nav.items[0].children[2].children[0].children == [
+            pages[1],
+            pages[0],
+            pages[2],
+        ]
+        for page in pages:
+            assert page.parent == nav.items[0].children[2].children[0]
+    else:
+        assert len(nav.items) == 4
+        assert (nav.items[0].title) == "Root"
+        assert nav.items[1:] == [
+            pages[1],
+            pages[0],
+            pages[2],
+        ]
+        assert len(nav.items[0].children) == 2
 
 
 @pytest.mark.parametrize(

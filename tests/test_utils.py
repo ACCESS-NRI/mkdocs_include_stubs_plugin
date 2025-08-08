@@ -868,11 +868,12 @@ def test_get_md_title(content, expected_output):
 @pytest.mark.parametrize(
     "path, expected_output",
     [
-        ("Some/ Path /For/Navigation/", "Some/ Path /For/Navigation"),  # string
+        ("> Some random / Path /For/Navigation/ >>", "> Some random / Path /For/Navigation/ >>"),  # string
         ("", ""),  # empty
+        ("    ", "    "),  # blank
         (None, "default_output"),  # none
     ],
-    ids=["string", "empty", "none"],
+    ids=["string", "empty", "blank", "none"],
 )
 @patch("include_configuration_stubs.utils.set_default_stubs_nav_path")
 def test_set_stubs_nav_path(mock_set_default_stubs_nav_path, path, expected_output):

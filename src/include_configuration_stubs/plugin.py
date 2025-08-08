@@ -215,10 +215,10 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         stubs_nav_path = set_stubs_nav_path(
             self.config["stubs_nav_path"], self.config["stubs_parent_url"]
         )
-        nav_path_segments = stubs_nav_path.split("/")
+        nav_path_segments = [seg.strip() for seg in stubs_nav_path.split(">")]
         # Add stubs to the navigation
         add_pages_to_nav(nav, sorted_pages, nav_path_segments)
-        nav_path = " -> ".join(nav_path_segments)
+        nav_path = " > ".join(nav_path_segments)
         logger.info(
             f"Added configuration stubs pages in the site navigation under {nav_path!r}."
         )
