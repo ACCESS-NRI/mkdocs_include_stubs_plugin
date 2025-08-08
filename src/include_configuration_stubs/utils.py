@@ -92,8 +92,6 @@ def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[str]:
         List of Str
             The list of refs (git sha) that match the pattern for the specified repo.
     """
-    if not pattern:
-        return []
     repo_url = f"https://github.com/{repo}"
     # Set which git refs to select based on the release status
     if ref_type == GitRefType.BRANCH:
@@ -107,6 +105,8 @@ def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[str]:
     pattern_list = pattern.split()
     command = ["git", "ls-remote", refs_flag, repo_url, *pattern_list]
     output = run_command(command)
+    if not output:
+        return []
     splitted_output = [s.split("\t") for s in output.split("\n")]
     # # Exclude the current local branch from the output if present,
     # because its files need to be added directly from the local branch, to

@@ -1,16 +1,22 @@
 """Tests for `plugin.py` module."""
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
-import logging
 
-from include_configuration_stubs.plugin import IncludeConfigurationStubsPlugin, logger, ENV_VARIABLE_NAME
+from include_configuration_stubs.plugin import (
+    ENV_VARIABLE_NAME,
+    IncludeConfigurationStubsPlugin,
+    logger,
+)
 from include_configuration_stubs.utils import ConfigStub
+
 
 @pytest.fixture(autouse=True)
 def silence_logs():
     logger.setLevel(logging.CRITICAL)
+
 
 @pytest.fixture
 def mock_plugin_config():
@@ -58,77 +64,89 @@ def test_on_config(create_plugin, create_mock_mkdocs_config):
         assert plugin.repo == output_repo
 
 
+@pytest.mark.parametrize(
+    "is_main_website_build",
+    [True, False],
+    ids=["main-website-build", "preview-website-build"],
+)
+@pytest.mark.parametrize(
+    "no_main",
+    [True, False],
+    ids=["no-main-true", "no-main-false"],
+)
+@pytest.mark.parametrize(
+    "main_pattern",
+    ["non-empty", ""],
+    ids=["main-pattern-non-empty", "main-pattern-empty"],
+)
+@pytest.mark.parametrize(
+    "preview_pattern",
+    ["non-empty", ""],
+    ids=["preview-pattern-non-empty", "preview-pattern-empty"],
+)
 @patch("include_configuration_stubs.plugin.get_git_refs")
 @patch("include_configuration_stubs.plugin.is_main_website")
-def test_get_git_refs_for_wesbsite_main(mock_is_main, mock_get_refs, create_plugin):
+def test_get_git_refs_for_wesbsite(
+    mock_is_main, mock_get_refs, create_plugin, is_main_website_build, no_main, main_pattern, preview_pattern
+):
     """Test the get_git_refs_for_wesbsite method for the main website."""
     plugin = create_plugin(repo="some_repo")
-    mock_is_main.return_value = True
+    plugin.config["preview_website"]["no_main"] = no_main
+    plugin.config["main_website"]["pattern"] = main_pattern
+    plugin.config["preview_website"]["pattern"] = preview_pattern
+    mock_is_main.return_value = is_main_website_build
     mock_get_refs.return_value = ["ref1", "ref2", "ref1"]
-
     refs = plugin.get_git_refs_for_wesbsite()
+    if (
+        not is_main_website_build # build is for a preview website
+        and not no_main # main website included
+        and main_pattern # non-empty main_pattern
+        and preview_pattern # non-empty preview_pattern
+    ):  # mock_get_refs should be called twice if the build is for a preview website, with main website included and both patterns non-empty.
+        assert mock_get_refs.call_count == 2
+        # First call for preview website
+        first_call_args = mock_get_refs.call_args_list[0]
+        assert first_call_args[0] == (plugin.repo,) #args
+        assert first_call_args[1] == {
+            "pattern": plugin.config["preview_website"]["pattern"],
+            "ref_type": plugin.config["preview_website"]["ref_type"],
+        } #kwargs
+        # Second call for main website
+        second_call_args = mock_get_refs.call_args_list[1]
+        assert second_call_args[0] == (plugin.repo,) #args
+        assert second_call_args[1] == {
+            "pattern": plugin.config["main_website"]["pattern"],
+            "ref_type": plugin.config["main_website"]["ref_type"],
+        } #kwargs
+    elif (
+        (is_main_website_build and main_pattern) # build for main website with non-empty main pattern
+        or (not is_main_website_build and not no_main and not preview_pattern and main_pattern) # build for preview website with main website, with empty preview pattern and non-empty main pattern
+    ):
+        mock_get_refs.assert_called_once_with(
+            plugin.repo,
+            pattern=plugin.config["main_website"]["pattern"],
+            ref_type=plugin.config["main_website"]["ref_type"],
+        )
+    elif (
+        (not is_main_website_build and no_main and preview_pattern) # build for preview website without main website, with non-empty preview pattern
+        or (not is_main_website_build and not no_main and preview_pattern and not main_pattern) # build for preview website with main website, with non-empty preview pattern and empty main pattern
+    ):
+        mock_get_refs.assert_called_once_with(
+            plugin.repo,
+            pattern=plugin.config["preview_website"]["pattern"],
+            ref_type=plugin.config["preview_website"]["ref_type"],
+        )
+    else:
+        mock_get_refs.assert_not_called()
+    if (
+        (not main_pattern and not preview_pattern) # Main and preview patterns are empty
+        or (not main_pattern and is_main_website_build) # Main website build and main pattern is empty
+        or (not preview_pattern and not is_main_website_build and no_main) # Preview website build without main and preview pattern is empty
+    ):
+        assert refs == set()
+    else:
+        assert refs == {"ref1", "ref2"}
 
-    # Should only call once, for main website
-    mock_get_refs.assert_called_once_with(
-        plugin.repo,
-        pattern=plugin.config["main_website"]["pattern"],
-        ref_type=plugin.config["main_website"]["ref_type"],
-    )
-    assert refs == {"ref1", "ref2"}
-
-
-@patch("include_configuration_stubs.plugin.get_git_refs")
-@patch("include_configuration_stubs.plugin.is_main_website")
-def test_get_git_refs_for_wesbsite_preview_no_main_true(
-    mock_is_main, mock_get_refs, create_plugin
-):
-    """Test the get_git_refs_for_wesbsite method for the preview website when preview_website.no_main is True."""
-    plugin = create_plugin(repo="some_repo")
-    mock_is_main.return_value = False
-    plugin.config["preview_website"]["no_main"] = True
-    mock_get_refs.return_value = ["ref1", "ref2", "ref1"]
-
-    refs = plugin.get_git_refs_for_wesbsite()
-
-    # Should only call once, for preview website
-    mock_get_refs.assert_called_once_with(
-        plugin.repo,
-        pattern=plugin.config["preview_website"]["pattern"],
-        ref_type=plugin.config["preview_website"]["ref_type"],
-    )
-    assert refs == {"ref1", "ref2"}
-
-
-@patch("include_configuration_stubs.plugin.get_git_refs")
-@patch("include_configuration_stubs.plugin.is_main_website")
-def test_get_git_refs_for_wesbsite_preview_no_main_false(
-    mock_is_main, mock_get_refs, create_plugin
-):
-    """Test the get_git_refs_for_wesbsite method for the preview website when preview_website.no_main is False."""
-    plugin = create_plugin(repo="some_repo")
-    mock_is_main.return_value = False
-    plugin.config["preview_website"]["no_main"] = False
-    mock_get_refs.return_value = ["ref1", "ref2", "ref1"]
-
-    refs = plugin.get_git_refs_for_wesbsite()
-
-    # Should call twice, first for preview website and then for main website
-    assert mock_get_refs.call_count == 2
-    first_call_args, first_call_kwargs = mock_get_refs.call_args_list[0]
-    second_call_args, second_call_kwargs = mock_get_refs.call_args_list[1]
-
-    assert first_call_args == (plugin.repo,)
-    assert first_call_kwargs == {
-        "pattern": plugin.config["preview_website"]["pattern"],
-        "ref_type": plugin.config["preview_website"]["ref_type"],
-    }
-    assert second_call_args == (plugin.repo,)
-    assert second_call_kwargs == {
-        "pattern": plugin.config["main_website"]["pattern"],
-        "ref_type": plugin.config["main_website"]["ref_type"],
-    }
-    # Duplicates removed
-    assert refs == {"ref1", "ref2"}
 
 @pytest.mark.parametrize(
     "config_stub_output",
@@ -190,7 +208,7 @@ def test_add_stub_to_site(
         # Check correctness of config stubs
         assert files[1].src_uri == config_stub_output.fname
         assert files[1].dest_dir == "site/dir"
-        if is_remote_stub: # Check content only for remote stubs
+        if is_remote_stub:  # Check content only for remote stubs
             assert files[1]._content == config_stub_output.content
         # Check correctness of pages
         assert plugin.pages[2].file == files[1]
@@ -226,11 +244,16 @@ def test_on_files(
         assert plugin.add_stub_to_site.call_count == 3
     else:
         assert plugin.add_stub_to_site.call_count == 2
-    
 
 
 @patch("include_configuration_stubs.plugin.set_stubs_nav_path")
-def test_on_nav(mock_set_stubs_nav_path, mock_files, create_plugin, create_mock_mkdocs_config, mock_section):
+def test_on_nav(
+    mock_set_stubs_nav_path,
+    mock_files,
+    create_plugin,
+    create_mock_mkdocs_config,
+    mock_section,
+):
     """Test the on_nav method."""
     mock_set_stubs_nav_path.return_value = "Root/Example/Path"
     # Create a mock plugin
@@ -238,9 +261,9 @@ def test_on_nav(mock_set_stubs_nav_path, mock_files, create_plugin, create_mock_
     plugin = create_plugin(repo="example_repo")
     plugin.get_git_refs_for_wesbsite = MagicMock(return_value={"ref1", "ref2"})
     pages = [
-        MagicMock(title = "B"),
-        MagicMock(title = "A"),
-        MagicMock(title = "C"),
+        MagicMock(title="B"),
+        MagicMock(title="A"),
+        MagicMock(title="C"),
     ]
     plugin.pages = pages
     # Create a mock nav object
@@ -255,7 +278,11 @@ def test_on_nav(mock_set_stubs_nav_path, mock_files, create_plugin, create_mock_
     assert nav.items[0].children[2].title == "Example"
     assert len(nav.items[0].children[2].children) == 1
     assert nav.items[0].children[2].children[0].title == "Path"
-    assert nav.items[0].children[2].children[0].children == [pages[1], pages[0], pages[2]]
+    assert nav.items[0].children[2].children[0].children == [
+        pages[1],
+        pages[0],
+        pages[2],
+    ]
     for page in pages:
         assert page.parent == nav.items[0].children[2].children[0]
 
@@ -278,8 +305,6 @@ def test_on_serve(create_plugin, create_mock_mkdocs_config, has_local_stub_abs_p
     plugin.on_serve(server, create_mock_mkdocs_config(), builder)
     # Check that the on_serve method was called
     if has_local_stub_abs_path:
-        server.watch.assert_called_once_with(
-            "local/stub/abs/path", builder
-        )
+        server.watch.assert_called_once_with("local/stub/abs/path", builder)
     else:
         server.watch.assert_not_called()

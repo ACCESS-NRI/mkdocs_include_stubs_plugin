@@ -9,7 +9,7 @@ from mkdocs.structure.nav import Navigation
 from mkdocs.structure.files import Files, File
 from mkdocs.livereload import LiveReloadServer
 
-from typing import Callable
+from typing import Callable, Optional
 from include_configuration_stubs.config import (
     ConfigScheme,
     GitRefType,
@@ -50,30 +50,41 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
             main_website_config if is_build_for_main_website else preview_website_config
         )
         pattern = website_config["pattern"]
-        ref_type = website_config["ref_type"]
-        logger.info(
-            f"Including '{website_type}' configuration stubs from Git {GitRefType(ref_type)!s} following the pattern '{pattern}'."
-        )
-        # Add stubs to the site
-        refs = get_git_refs(
-            repo,
-            pattern=pattern,
-            ref_type=ref_type,
-        )
+        if pattern.strip():
+            ref_type = website_config["ref_type"]
+            logger.info(
+                f"Including '{website_type}' configuration stubs from Git {GitRefType(ref_type)!s} following the pattern '{pattern}'."
+            )
+            # Add stubs to the site
+            refs = get_git_refs(
+                repo,
+                pattern=pattern,
+                ref_type=ref_type,
+            )
+        else:
+            logger.info(
+                f"No Git reference included for '{website_type}'. Pattern was empty."
+            )
+            refs = []
         # If is a preview website and 'no_main' is False, include also the main website stubs
         if not is_build_for_main_website and not preview_website_config["no_main"]:
             pattern = main_website_config["pattern"]
-            ref_type = main_website_config["ref_type"]
-            logger.info(
-                f"Including 'main' configuration stubs from Git {GitRefType(ref_type)!s} following the pattern '{pattern}'."
-            )
-            refs.extend(
-                get_git_refs(
-                    repo,
-                    pattern=main_website_config["pattern"],
-                    ref_type=main_website_config["ref_type"],
+            if pattern.strip():
+                ref_type = main_website_config["ref_type"]
+                logger.info(
+                    f"Including 'main' configuration stubs from Git {GitRefType(ref_type)!s} following the pattern '{pattern}'."
                 )
-            )
+                refs.extend(
+                    get_git_refs(
+                        repo,
+                        pattern=main_website_config["pattern"],
+                        ref_type=main_website_config["ref_type"],
+                    )
+                )
+            else:
+                logger.info(
+                    "No Git reference included for 'main'. Pattern was empty."
+                )
         # Remove duplicate refs
         all_refs = set(refs)
         logger.info(f"Found the following Git references (Git SHAs): {all_refs}.")
@@ -86,7 +97,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         stubs_parent_url: str,
         files: Files,
         is_remote_stub: bool,
-        ref: str = None,
+        ref: Optional[str] = None,
     ) -> None:
         """
         Add a configuration stub to the site.
