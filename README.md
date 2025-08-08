@@ -82,7 +82,11 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
     If no `stubs_nav_path` is specified and `stubs_parent_url` is set to `custom/navigation/configuration_stubs`, the `stubs_nav_path` becomes `Custom > Navigation > Configuration stubs`, placing the configuration stubs inside the `Configuration stubs` subsection, within the `Navigation` section, under the top-level `Custom` Section of the site navigation.
 
 ## MkDocs wrapper
-This plugin also installs a `mkdocs` wrapper executable
+This plugin also installs a `mkdocs` command line executable, which wraps around the default `mkdocs` command.
+For more information, run:
+```
+mkdocs --help
+```
 
 ## Lincense
 Apache Software License 2.0
