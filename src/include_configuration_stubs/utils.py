@@ -27,7 +27,14 @@ GITHUB_URL = "https://github.com/"
 GITHUB_SSH = "git@github.com:"
 
 ConfigStub = namedtuple("ConfigStub", ["fname", "title", "content"])
-GitRef = namedtuple("GitRef", ["sha", "name"])
+BaseGitRef = namedtuple("BaseGitRef", ["sha", "name"])
+
+class GitRef(BaseGitRef):
+    """
+    Named tuple to represent a Git reference with its SHA and name.
+    """
+    def __repr__(self) -> str:
+        return f"{self.name} ({self.sha})"
 
 
 def run_command(command: Sequence[str]) -> str:
