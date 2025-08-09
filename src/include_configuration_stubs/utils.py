@@ -27,6 +27,7 @@ GITHUB_URL = "https://github.com/"
 GITHUB_SSH = "git@github.com:"
 
 ConfigStub = namedtuple("ConfigStub", ["fname", "title", "content"])
+GitRef = namedtuple("GitRef", ["sha", "name"])
 
 
 def run_command(command: Sequence[str]) -> str:
@@ -666,3 +667,24 @@ def get_dest_uri_for_local_stub(
             break
     dest_uri = os.path.join(stubs_parent_url, stub_fname_no_suffix)
     return dest_uri if not use_directory_urls else os.path.join(dest_uri,"index.html")
+
+def keep_unique_refs(refs: list[GitRef]) -> list[GitRef]:
+    """
+    Filter Git references keeping only 
+    first appearances of the same SHA.
+
+    Args:
+        refs: List of GitRef
+            The list of Git references to filter.
+
+    Returns:
+        List of GitRef
+            The list of unique Git references.
+    """
+    seen = set()
+    unique_refs = []
+    for ref in refs:
+        if ref.sha not in seen:
+            seen.add(ref.sha)
+            unique_refs.append(ref)
+    return unique_refs

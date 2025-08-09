@@ -15,6 +15,7 @@ from include_configuration_stubs.config import (
     GitRefType,
 )
 from include_configuration_stubs.utils import (
+    GitRef,
     add_pages_to_nav,
     get_config_stub,
     get_git_refs,
@@ -23,6 +24,7 @@ from include_configuration_stubs.utils import (
     make_file_unique,
     set_stubs_nav_path,
     get_dest_uri_for_local_stub,
+    keep_unique_refs,
 )
 from include_configuration_stubs.logging import get_custom_logger
 from include_configuration_stubs.cli import ENV_VARIABLE_NAME
@@ -37,7 +39,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         logger.info(f"GitHub Repository set to '{self.repo}'.")
         return config
 
-    def get_git_refs_for_wesbsite(self) -> set:
+    def get_git_refs_for_website(self) -> list[GitRef]:
         repo = self.repo
         is_build_for_main_website = is_main_website(
             self.config["main_website"]["branch"], repo
@@ -86,9 +88,9 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
                     "No Git reference included for 'main'. Pattern was empty."
                 )
         # Remove duplicate refs
-        all_refs = set(refs)
-        logger.info(f"Found the following Git references (Git SHAs): {all_refs}.")
-        return all_refs
+        unique_refs = keep_unique_refs(refs)
+        logger.info(f"Found the following Git references (Git SHAs): {unique_refs}.")
+        return unique_refs
 
     def add_stub_to_site(
         self,
@@ -177,7 +179,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         """
         self.pages: list[Page] = []
         # Get the git refs for the website
-        refs = self.get_git_refs_for_wesbsite()
+        refs = self.get_git_refs_for_website()
         stubs_dir = self.config["stubs_dir"]
         logger.info(f"Looking for configuration stubs in {stubs_dir!r}.")
         stubs_parent_url = self.config["stubs_parent_url"]

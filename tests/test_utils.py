@@ -11,6 +11,7 @@ from include_configuration_stubs.config import GitRefType
 from include_configuration_stubs.plugin import SUPPORTED_FILE_FORMATS
 from include_configuration_stubs.utils import (
     ConfigStub,
+    GitRef,
     add_navigation_hierarchy,
     add_pages_to_nav,
     append_number_to_file_name,
@@ -33,6 +34,7 @@ from include_configuration_stubs.utils import (
     remove_local_branch_from_refs,
     run_command,
     get_dest_uri_for_local_stub,
+    keep_unique_refs,
 )
 
 
@@ -1057,3 +1059,24 @@ def test_get_dest_uri_for_local_stub(use_directory_urls, expected_output):
     stubs_parent_url = "parent/url"
     output = get_dest_uri_for_local_stub(stub_fname, stubs_parent_url, use_directory_urls, SUPPORTED_FILE_FORMATS)
     assert output == expected_output
+
+def test_keep_unique_refs():
+    """
+    Test the keep_unique_refs function.
+    """
+    refs = [
+        GitRef(sha="123", name="ref1"),
+        GitRef(sha="456", name="ref2"),
+        GitRef(sha="123", name="ref4"), # duplicate
+        GitRef(sha="231", name="ref1"),
+        GitRef(sha="456", name="ref1"), # duplicate
+        GitRef(sha="431", name="ref1"),
+    ]
+    expected = [
+        GitRef(sha="123", name="ref1"),
+        GitRef(sha="456", name="ref2"),
+        GitRef(sha="231", name="ref1"),
+        GitRef(sha="431", name="ref1"),
+    ]
+    result = keep_unique_refs(refs)
+    assert result == expected

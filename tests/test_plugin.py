@@ -10,7 +10,7 @@ from include_configuration_stubs.plugin import (
     IncludeConfigurationStubsPlugin,
     logger,
 )
-from include_configuration_stubs.utils import ConfigStub
+from include_configuration_stubs.utils import ConfigStub, GitRef
 
 
 @pytest.fixture(autouse=True)
@@ -86,17 +86,22 @@ def test_on_config(create_plugin, create_mock_mkdocs_config):
 )
 @patch("include_configuration_stubs.plugin.get_git_refs")
 @patch("include_configuration_stubs.plugin.is_main_website")
-def test_get_git_refs_for_wesbsite(
+def test_get_git_refs_for_website(
     mock_is_main, mock_get_refs, create_plugin, is_main_website_build, no_main, main_pattern, preview_pattern
 ):
-    """Test the get_git_refs_for_wesbsite method for the main website."""
+    """Test the get_git_refs_for_website method for the main website."""
     plugin = create_plugin(repo="some_repo")
     plugin.config["preview_website"]["no_main"] = no_main
     plugin.config["main_website"]["pattern"] = main_pattern
     plugin.config["preview_website"]["pattern"] = preview_pattern
     mock_is_main.return_value = is_main_website_build
-    mock_get_refs.return_value = ["ref1", "ref2", "ref1"]
-    refs = plugin.get_git_refs_for_wesbsite()
+    mock_get_refs.return_value = [
+        GitRef(sha="123", name="ref1"),
+        GitRef(sha="456", name="ref2"),
+        GitRef(sha="123", name="ref4"),
+        GitRef(sha="231", name="ref1"),
+    ]
+    refs = plugin.get_git_refs_for_website()
     if (
         not is_main_website_build # build is for a preview website
         and not no_main # main website included
@@ -143,9 +148,13 @@ def test_get_git_refs_for_wesbsite(
         or (not main_pattern and is_main_website_build) # Main website build and main pattern is empty
         or (not preview_pattern and not is_main_website_build and no_main) # Preview website build without main and preview pattern is empty
     ):
-        assert refs == set()
+        assert refs == []
     else:
-        assert refs == {"ref1", "ref2"}
+        assert refs == [
+            GitRef(sha="123", name="ref1"),
+            GitRef(sha="456", name="ref2"),
+            GitRef(sha="231", name="ref1"),
+        ]
 
 
 @pytest.mark.parametrize(
@@ -236,7 +245,7 @@ def test_on_files(
     """Test the on_files method."""
     files = mock_files()
     plugin = create_plugin(repo="example_repo")
-    plugin.get_git_refs_for_wesbsite = MagicMock(return_value={"ref1", "ref2"})
+    plugin.get_git_refs_for_website = MagicMock(return_value={"ref1", "ref2"})
     plugin.add_stub_to_site = MagicMock()
     monkeypatch.setenv(ENV_VARIABLE_NAME, env_variable_value)
     plugin.on_files(files, create_mock_mkdocs_config())
@@ -265,7 +274,7 @@ def test_on_nav(
     # Create a mock plugin
     files = mock_files()
     plugin = create_plugin(repo="example_repo")
-    plugin.get_git_refs_for_wesbsite = MagicMock(return_value={"ref1", "ref2"})
+    plugin.get_git_refs_for_website = MagicMock(return_value={"ref1", "ref2"})
     pages = [
         MagicMock(title="B"),
         MagicMock(title="A"),
