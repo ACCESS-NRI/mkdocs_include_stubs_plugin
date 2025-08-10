@@ -83,7 +83,7 @@ def check_is_installed(executable: str) -> None:
         )
 
 
-def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[str]:
+def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[GitRef]:
     """
     Retrieve Git references of the specified type from the given repository,
     filtering them according to the provided pattern.
@@ -97,32 +97,38 @@ def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[str]:
             The Git ref type.
 
     Returns:
-        List of Str
-            The list of refs (git sha) that match the pattern for the specified repo.
+        List of GitRef
+            The list of GitRefs that match the pattern for the specified repo.
     """
     repo_url = f"https://github.com/{repo}"
     # Set which git refs to select based on the release status
     if ref_type == GitRefType.BRANCH:
-        refs_flag = "--heads"
+        refs_flag = ["--heads"]
     elif ref_type == GitRefType.TAG:
-        refs_flag = "--tags"
+        refs_flag = ["--tags"]
     else:
-        refs_flag = "--heads --tags"
+        refs_flag = ["--heads", "--tags"]
     # Print all tags in the repository
     # Split the pattern so it's treated as multiple arguments
     pattern_list = pattern.split()
-    command = ["git", "ls-remote", refs_flag, repo_url, *pattern_list]
+    command = ["git", "ls-remote", *refs_flag, repo_url, *pattern_list]
     output = run_command(command)
-    if not output:
-        return []
-    splitted_output = [s.split("\t") for s in output.split("\n")]
-    # # Exclude the current local branch from the output if present,
-    # because its files need to be added directly from the local branch, to
-    # allow for the 'serve' command to track changes to those files
+    refs = []
     local_branch = get_local_branch()
-    remove_local_branch_from_refs(splitted_output, local_branch)
-    # # Get only the git sha
-    refs = [out[0] for out in splitted_output]
+    if output:
+        for ref in output.split("\n"):
+            sha, name = ref.split("\t")
+            if (
+                # Exclude annotated tags (ending with '^{}') because the non-annotated
+                # references (same name without '^{}') always exist and point to the same 
+                # working tree content
+                not (name.startswith("refs/tags/") and name.endswith("^{}"))
+                # Exclude the current local branch, because its files need to be added
+                # directly from the local branch, to allow for the 'serve' command to 
+                # track changes to those files. 
+                and (name != f"refs/heads/{local_branch}")
+            ):
+                refs.append(GitRef(sha=sha, name=name.removeprefix("refs/tags/").removeprefix("refs/heads/")))
     return refs
 
 
@@ -629,21 +635,6 @@ def get_local_branch() -> str:
     command = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
     return run_command(command)
 
-
-def remove_local_branch_from_refs(refs: list[list[str]], local_branch: str) -> None:
-    """
-    Remove the local branch from the list of refs if it is present.
-
-    Args:
-        refs: List of Str
-            The list of refs to filter as an output of the `git ls-remote ...` command.
-        local_branch: Str
-            The name of the current local branch.
-    """
-    for i, ref in enumerate(refs):
-        if ref[1].endswith(f"/{local_branch}"):
-            del refs[i]
-            break
 
 def get_dest_uri_for_local_stub(
     stub_fname: str, 

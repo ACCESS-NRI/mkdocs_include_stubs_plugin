@@ -31,7 +31,6 @@ from include_configuration_stubs.utils import (
     make_file_unique,
     set_stubs_nav_path,
     get_default_branch_from_remote_repo,
-    remove_local_branch_from_refs,
     run_command,
     get_dest_uri_for_local_stub,
     keep_unique_refs,
@@ -77,11 +76,11 @@ def test_check_is_installed_not_found():
 
 
 @pytest.mark.parametrize(
-    "ref_type",
+    "ref_type, ref_flag",
     [
-        GitRefType.BRANCH,  # ref_type_branch
-        GitRefType.TAG,  # ref_type_tag
-        GitRefType.ALL,  # ref_type_all
+        (GitRefType.BRANCH, ["--heads"]),  # ref_type_branch
+        (GitRefType.TAG, ["--tags"]),  # ref_type_tag
+        (GitRefType.ALL, ["--heads", "--tags"]),  # ref_type_all
     ],
     ids=["ref_type_branch", "ref_type_tag", "ref_type_all"],
 )
@@ -89,43 +88,38 @@ def test_check_is_installed_not_found():
     "command_output, expected_output",
     [
         (
-            "sha1\trefs/heads/main\nsha2\trefs/heads/dev\nsha3\trefs/heads/branch1", 
-            ["sha1", "sha2", "sha3"]
+            "sha1\trefs/heads/main\nsha2\trefs/tags/dev\nsha3\trefs/heads/example/branch1\nsha4\trefs/tags/example/tag^{}",
+            [
+                GitRef(sha="sha1", name='main'),
+                GitRef(sha="sha2", name='dev'),
+                GitRef(sha="sha3", name='example/branch1'),
+            ],
         ), # non-empty-command-output
         ("", []), # empty-command-output
     ],
     ids=["non-empty-command-output", "empty-command-output"],
 )
 @patch("include_configuration_stubs.utils.get_local_branch")
-@patch("include_configuration_stubs.utils.remove_local_branch_from_refs")
 def test_get_git_refs(
-    mock_remove_local_branch_from_refs, 
     mock_get_local_branch, 
     fp, 
     ref_type,
+    ref_flag,
     command_output,
     expected_output,
 ):
     """Test the get_git_refs function."""
-    if ref_type == GitRefType.BRANCH:
-        refs_flag = "--heads"
-    elif ref_type == GitRefType.TAG:
-        refs_flag = "--tags"
-    elif ref_type == GitRefType.ALL:
-        refs_flag = "--heads --tags"
     repo = "example/repo"
     repo_url = f"https://github.com/{repo}"
     pattern="random-pattern"
     fp.register(
-        ["git", "ls-remote", refs_flag, repo_url, pattern], stdout=command_output
+        ["git", "ls-remote", *ref_flag, repo_url, pattern], stdout=command_output
     )
     result = get_git_refs(repo, pattern, ref_type)
     assert result == expected_output
-    assert ["git", "ls-remote", refs_flag, repo_url, pattern] in fp.calls
+    assert ["git", "ls-remote", *ref_flag, repo_url, pattern] in fp.calls
     if command_output:
-        mock_remove_local_branch_from_refs.assert_called_once()
-    else:
-        mock_remove_local_branch_from_refs.assert_not_called()
+        mock_get_local_branch.assert_called_once()
 
 @pytest.mark.parametrize(
     "is_remote_stub, response_json, response_raise, os_listdir_output, expected_output",
@@ -1004,40 +998,6 @@ def test_get_default_branch_from_remote_repo(
             get_default_branch_from_remote_repo(repo)
     else:
         assert get_default_branch_from_remote_repo(repo) == expected_output
-
-
-@pytest.mark.parametrize(
-    "local_branch, expected_output",
-    [
-        (
-            "some_branch",
-            [
-                ["sha1", "some/repo/ref1"],
-                ["sha2", "some/repo/ref2"],
-                ["sha3", "some/repo/ref3"],
-            ],
-        ),  # no_local_branch_in_refs
-        (
-            "ref2",
-            [["sha1", "some/repo/ref1"], ["sha3", "some/repo/ref3"]],
-        ),  # local_branch_in_refs
-    ],
-    ids=[
-        "no_local_branch_in_refs",
-        "local_branch_in_refs",
-    ],
-)
-def test_remove_local_branch_from_refs(local_branch, expected_output):
-    """
-    Test the remove_local_branch_from_refs function.
-    """
-    refs = [
-        ["sha1", "some/repo/ref1"],
-        ["sha2", "some/repo/ref2"],
-        ["sha3", "some/repo/ref3"],
-    ]
-    remove_local_branch_from_refs(refs, local_branch)
-    assert refs == expected_output
 
 
 @pytest.mark.parametrize(
