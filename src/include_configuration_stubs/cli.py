@@ -69,9 +69,7 @@ def get_default_mkdocs_arguments(command: str, other_args: list) -> list:
         List
             The default mkdocs command arguments.
     """
-    if not command:
-        return other_args
-    return [command] + other_args
+    return [command] + other_args if command else other_args
 
 def run_default_mkdocs_command(parameters) -> None:
     """
@@ -92,13 +90,13 @@ def get_plugin_config(config_path=None) -> dict | None:
     # This function runs outside of the mkdocs context, therefore we need to parse the plugin configuration
     # from the mkdocs.yaml file.
     config = load_config(config_path)
-    plugin_config = config.get("plugins", {}).get("include-configuration-stubs")
+    plugin_config = config.get("plugins", {}).get("include-configuration-stubs") # type: ignore
     if plugin_config:
         return plugin_config.config
     return None
 
 
-def is_default_mkdocs_to_be_run(command: str, other_args: list) -> bool:
+def is_default_mkdocs_to_be_run(command: str, other_args: list, first_arg: str) -> bool:
     """
     Check if the default mkdocs command should be run.
 
@@ -107,9 +105,16 @@ def is_default_mkdocs_to_be_run(command: str, other_args: list) -> bool:
             The command passed to the CLI.
         other_args: Str
             The other passed CLI arguments.
+        first_arg: Str
+            The first passed CLI argument.
     Returns:
         True if the default mkdocs command should be run, False otherwise.
     """
+    if first_arg == "--":
+        logger.info(
+            "'--' passed as the first argument."
+        )
+        return True
     if command not in SUPPORTED_COMMANDS:
         logger.info(
             f"No command among {SUPPORTED_COMMANDS} passed."
@@ -192,7 +197,7 @@ def main():
     command = known_args.command
     default_mkdocs_arguments = get_default_mkdocs_arguments(command, unknown_args)
     default_mkdocs_arguments_list = " ".join(default_mkdocs_arguments)
-    if is_default_mkdocs_to_be_run(command, unknown_args):
+    if is_default_mkdocs_to_be_run(command, unknown_args, sys.argv[1]):
         # Run the default mkdocs command with the same arguments passed to this script
         logger.info(f"Running the command 'mkdocs {default_mkdocs_arguments_list}' using the default mkdocs executable.")
         run_default_mkdocs_command(default_mkdocs_arguments)
