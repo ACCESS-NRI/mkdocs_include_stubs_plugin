@@ -263,7 +263,7 @@ def test_get_config_stub_fname(
             stub_dir="config/path",
             supported_file_formats=SUPPORTED_FILE_FORMATS,
             is_remote_stub=is_remote_stub,
-            ref="sha1234567",
+            gitsha="sha1234567",
             repo="owner/repo",
         )
         == expected_output
@@ -309,7 +309,7 @@ def test_get_config_stub_content(
     stub_dir="config/path"
     fname="example_name"
     repo="owner/repo"
-    ref="sha1234567"
+    gitsha="sha1234567"
     if is_remote_stub:
         mock_response = MagicMock()
         mock_response.text = response_text
@@ -323,7 +323,7 @@ def test_get_config_stub_content(
             fname=fname,
             is_remote_stub=is_remote_stub,
             repo=repo,
-            ref=ref,
+            gitsha=gitsha,
         ) == expected_output
     else:
         m = mock_open(read_data=fread_output)
@@ -333,7 +333,7 @@ def test_get_config_stub_content(
                 fname=fname,
                 is_remote_stub=is_remote_stub,
                 repo=repo,
-                ref=ref,
+                gitsha=gitsha,
             ) 
         assert output == expected_output
         m.assert_called_once_with(f"{stub_dir}/{fname}", "r", encoding="utf-8")
@@ -425,7 +425,7 @@ def test_get_config_stub(
         supported_file_formats=SUPPORTED_FILE_FORMATS,
         is_remote_stub=is_remote_stub,
         repo="owner/repo",
-        ref="sha1234567",
+        gitsha="sha1234567",
     ) == expected_output
     assert mock_get_fname.call_args.kwargs.get('is_remote_stub') == is_remote_stub
     if mock_get_content.call_args is not None:

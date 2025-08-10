@@ -99,7 +99,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         stubs_parent_url: str,
         files: Files,
         is_remote_stub: bool,
-        ref: Optional[str] = None,
+        ref: Optional[GitRef] = None,
     ) -> None:
         """
         Add a configuration stub to the site.
@@ -112,7 +112,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
             supported_file_formats=SUPPORTED_FILE_FORMATS,
             is_remote_stub=is_remote_stub,
             repo=self.repo,
-            ref=ref,
+            gitsha=ref.sha if ref else None,
         )
         if config_stub:
             fname = config_stub.fname

@@ -203,7 +203,7 @@ def test_add_stub_to_site(
     plugin.add_stub_to_site(
         config=mock_mkdocs_config,
         stubs_dir="some/dir",
-        ref="some_ref",
+        ref=GitRef(sha="some_ref", name="some_ref_name"),
         stubs_parent_url="parent/url",
         files=files,
         is_remote_stub=is_remote_stub,

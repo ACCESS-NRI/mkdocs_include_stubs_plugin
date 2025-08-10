@@ -137,7 +137,7 @@ def get_config_stub_fname(
     supported_file_formats: tuple[str, ...],
     is_remote_stub: bool = True,
     repo: Optional[str] = None,
-    ref: Optional[str] = None,
+    gitsha: Optional[str] = None,
 ) -> Optional[str]:
     """
     Get the name of the configuration stub file from the GitHub repository.
@@ -165,7 +165,7 @@ def get_config_stub_fname(
     """
     if is_remote_stub:
         api_url = f"https://api.github.com/repos/{repo}/contents/{stub_dir}"
-        params = {"ref": ref}
+        params = {"ref": gitsha}
         try:
             resp = requests.get(api_url, params=params)
             resp.raise_for_status()
@@ -191,7 +191,7 @@ def get_config_stub_content(
     fname: str,
     is_remote_stub: bool = True,
     repo: Optional[str] = None,
-    ref: Optional[str] = None,
+    gitsha: Optional[str] = None,
 ) -> Optional[str]:
     """
     Get the content of the configuration stub from the GitHub repository.
@@ -217,7 +217,7 @@ def get_config_stub_content(
             The configuration stub content.
     """
     if is_remote_stub:
-        raw_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{stub_dir}/{fname}"
+        raw_url = f"https://raw.githubusercontent.com/{repo}/{gitsha}/{stub_dir}/{fname}"
         try:
             raw_resp = requests.get(raw_url)
             raw_resp.raise_for_status()
@@ -255,7 +255,7 @@ def get_config_stub(
     supported_file_formats: tuple[str, ...],
     is_remote_stub: bool = True,
     repo: Optional[str] = None,
-    ref: Optional[str] = None,
+    gitsha: Optional[str] = None,
 ) -> Optional[ConfigStub]:
     """
     Get the config stub name, content and title formatted as a ConfigStub namedtuple.
@@ -286,7 +286,7 @@ def get_config_stub(
         supported_file_formats=supported_file_formats,
         is_remote_stub=is_remote_stub,
         repo=repo,
-        ref=ref
+        gitsha=gitsha
     )
     if stub_name is None:
         return None
@@ -296,7 +296,7 @@ def get_config_stub(
         fname=stub_name,
         is_remote_stub=is_remote_stub,
         repo=repo,
-        ref=ref,
+        gitsha=gitsha,
     )
     if stub_content is None:
         return None
