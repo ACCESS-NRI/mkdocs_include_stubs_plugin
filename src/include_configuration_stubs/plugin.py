@@ -65,7 +65,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
             )
         else:
             logger.info(
-                f"No Git reference included for '{website_type}'. Pattern was empty."
+                f"No Git reference included for '{website_type}' website. Pattern was empty."
             )
             refs = []
         # If is a preview website and 'no_main' is False, include also the main website stubs
@@ -85,7 +85,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
                 )
             else:
                 logger.info(
-                    "No Git reference included for 'main'. Pattern was empty."
+                    "No Git reference included for 'main' website. Pattern was empty."
                 )
         # Remove duplicate refs
         unique_refs = keep_unique_refs(refs)
