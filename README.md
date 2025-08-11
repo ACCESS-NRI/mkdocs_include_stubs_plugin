@@ -12,6 +12,11 @@ files included by this plugin to be processed by those other plugins.
     - MarkDown (`.md`)
     - HTML (`.html`)
 
+### Name of the stub pages in the website navigation
+The name of the configuration stub pages in the website navigation will be inferred following the logic below:
+- If the stub contains a title (`#` heading or `<h1>` block), that title is used.
+- If no title is found, the stub file name is used instead.
+
 ## Requirements
 In addition to the requirements specified in the `pyproject.toml` file, this plugin requires and uses the following executables:
 - `git`
