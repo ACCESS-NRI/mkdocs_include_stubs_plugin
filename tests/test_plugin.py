@@ -50,18 +50,16 @@ def create_plugin(mock_plugin_config):
 
     return _plugin
 
-
-def test_on_config(create_plugin, create_mock_mkdocs_config):
+@patch("include_configuration_stubs.plugin.get_repo_from_input")
+@patch("include_configuration_stubs.plugin.IncludeConfigurationStubsPlugin.get_git_refs_for_website")
+def test_on_config(mock_get_git_refs, mock_get_repo, create_plugin, create_mock_mkdocs_config):
     """Test the on_config method of the plugin."""
     plugin = create_plugin()
-    with patch(
-        "include_configuration_stubs.plugin.get_repo_from_input"
-    ) as mock_get_repo:
-        output_repo = "example_output_repo"
-        mock_get_repo.return_value = output_repo
-        plugin.on_config(create_mock_mkdocs_config())
-        # Check that the repo is set correctly
-        assert plugin.repo == output_repo
+    plugin.on_config(create_mock_mkdocs_config())
+    # Check that the attributes are set correctly
+    assert plugin.repo == mock_get_repo.return_value
+    assert plugin.refs == mock_get_git_refs.return_value
+
 
 
 @pytest.mark.parametrize(
@@ -244,8 +242,7 @@ def test_on_files(
 ):
     """Test the on_files method."""
     files = mock_files()
-    plugin = create_plugin(repo="example_repo")
-    plugin.get_git_refs_for_website = MagicMock(return_value={"ref1", "ref2"})
+    plugin = create_plugin(repo="example_repo", refs={"ref1", "ref2"})
     plugin.add_stub_to_site = MagicMock()
     monkeypatch.setenv(ENV_VARIABLE_NAME, env_variable_value)
     plugin.on_files(files, create_mock_mkdocs_config())

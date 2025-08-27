@@ -34,11 +34,6 @@ SUPPORTED_FILE_FORMATS = (".md", ".html")
 
 
 class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
-    def on_config(self, config: MkDocsConfig) -> MkDocsConfig:
-        self.repo = get_repo_from_input(self.config["repo"])
-        logger.info(f"GitHub Repository set to '{self.repo}'.")
-        return config
-
     def get_git_refs_for_website(self) -> list[GitRef]:
         repo = self.repo
         is_build_for_main_website = is_main_website(
@@ -92,6 +87,15 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         logger.info(f"Found the following Git references (Git SHAs): {unique_refs}.")
         return unique_refs
 
+
+    def on_config(self, config: MkDocsConfig) -> MkDocsConfig:
+        self.repo = get_repo_from_input(self.config["repo"])
+        logger.info(f"GitHub Repository set to '{self.repo}'.")
+        # Get the git refs for the website
+        self.refs = self.get_git_refs_for_website()
+        return config
+
+
     def add_stub_to_site(
         self,
         config: MkDocsConfig,
@@ -106,7 +110,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         If `is_remote_stub` is True, it will fetch the stub from the remote repository,
         otherwise it will fetch it from the local directory.
         """
-        # Get the remote configuration stub file from the repository ref
+        # Get the configuration stub file
         config_stub = get_config_stub(
             stub_dir=stubs_dir,
             supported_file_formats=SUPPORTED_FILE_FORMATS,
@@ -178,8 +182,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         Dynamically add configuration stubs to the MkDocs files list.
         """
         self.pages: list[Page] = []
-        # Get the git refs for the website
-        refs = self.get_git_refs_for_website()
+        refs = self.refs
         stubs_dir = self.config["stubs_dir"]
         logger.info(f"Looking for configuration stubs in {stubs_dir!r}.")
         stubs_parent_url = self.config["stubs_parent_url"]
