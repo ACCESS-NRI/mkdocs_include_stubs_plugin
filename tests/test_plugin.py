@@ -5,12 +5,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from include_configuration_stubs.plugin import (
+from include_stubs.plugin import (
     ENV_VARIABLE_NAME,
-    IncludeConfigurationStubsPlugin,
+    IncludeStubsPlugin,
     logger,
 )
-from include_configuration_stubs.utils import ConfigStub, GitRef
+from include_stubs.utils import Stub, GitRef
 
 
 @pytest.fixture(autouse=True)
@@ -42,7 +42,7 @@ def create_plugin(mock_plugin_config):
     """Factory function to create the plugin with the prescribed configuration options."""
 
     def _plugin(config=mock_plugin_config, **kwargs):
-        plugin = IncludeConfigurationStubsPlugin()
+        plugin = IncludeStubsPlugin()
         plugin.load_config(config)
         for key, value in kwargs.items():
             setattr(plugin, key, value)
@@ -50,8 +50,8 @@ def create_plugin(mock_plugin_config):
 
     return _plugin
 
-@patch("include_configuration_stubs.plugin.get_repo_from_input")
-@patch("include_configuration_stubs.plugin.IncludeConfigurationStubsPlugin.get_git_refs_for_website")
+@patch("include_stubs.plugin.get_repo_from_input")
+@patch("include_stubs.plugin.IncludeStubsPlugin.get_git_refs_for_website")
 def test_on_config(mock_get_git_refs, mock_get_repo, create_plugin, create_mock_mkdocs_config):
     """Test the on_config method of the plugin."""
     plugin = create_plugin()
@@ -82,8 +82,8 @@ def test_on_config(mock_get_git_refs, mock_get_repo, create_plugin, create_mock_
     ["non_empty", ""],
     ids=["preview_pattern_non_empty", "preview_pattern_empty"],
 )
-@patch("include_configuration_stubs.plugin.get_git_refs")
-@patch("include_configuration_stubs.plugin.is_main_website")
+@patch("include_stubs.plugin.get_git_refs")
+@patch("include_stubs.plugin.is_main_website")
 def test_get_git_refs_for_website(
     mock_is_main, mock_get_refs, create_plugin, is_main_website_build, no_main, main_pattern, preview_pattern
 ):
@@ -156,14 +156,14 @@ def test_get_git_refs_for_website(
 
 
 @pytest.mark.parametrize(
-    "config_stub_output",
+    "stub_output",
     [
-        ConfigStub(fname="key", content="value", title="title"),  # valid_config_stub
-        None,  # None_config_stub
+        Stub(fname="key", content="value", title="title"),  # valid_stub
+        None,  # None_stub
     ],
     ids=[
-        "valid_config_stub",
-        "None_config_stub",
+        "valid_stub",
+        "None_stub",
     ],
 )
 @pytest.mark.parametrize(
@@ -177,14 +177,14 @@ def test_get_git_refs_for_website(
         "local",
     ],
 )
-@patch("include_configuration_stubs.plugin.get_config_stub")
-@patch("include_configuration_stubs.plugin.get_dest_uri_for_local_stub")
-@patch("include_configuration_stubs.plugin.os.path.abspath")
+@patch("include_stubs.plugin.get_stub")
+@patch("include_stubs.plugin.get_dest_uri_for_local_stub")
+@patch("include_stubs.plugin.os.path.abspath")
 def test_add_stub_to_site(
     mock_abspath,
     mock_get_dest_uri_for_local_stub,
-    mock_get_config_stub,
-    config_stub_output,
+    mock_get_stub,
+    stub_output,
     is_remote_stub,
     create_plugin,
     mock_files,
@@ -194,7 +194,7 @@ def test_add_stub_to_site(
     files = mock_files([MagicMock()])
     plugin = create_plugin(repo="example_repo")
     plugin.pages = [MagicMock(), MagicMock()]
-    mock_get_config_stub.return_value = config_stub_output
+    mock_get_stub.return_value = stub_output
     mock_get_dest_uri_for_local_stub.return_value = "dest/uri"
     mock_mkdocs_config = create_mock_mkdocs_config(site_dir="site/dir")
     mock_abspath.return_value = "stub/file/abs/path"
@@ -206,20 +206,20 @@ def test_add_stub_to_site(
         files=files,
         is_remote_stub=is_remote_stub,
     )
-    expected_len = 1 if config_stub_output is None else 2
-    # Check that the config stubs were added to the files
+    expected_len = 1 if stub_output is None else 2
+    # Check that the stubs were added to the files
     assert len(files) == expected_len
-    # Check that the config stub page were added to the pages
+    # Check that the stub page were added to the pages
     assert len(plugin.pages) == expected_len + 1
-    if config_stub_output:
-        # Check correctness of config stubs
-        assert files[1].src_uri == config_stub_output.fname
+    if stub_output:
+        # Check correctness of stubs
+        assert files[1].src_uri == stub_output.fname
         assert files[1].dest_dir == "site/dir"
         if is_remote_stub:  # Check content only for remote stubs
-            assert files[1]._content == config_stub_output.content
+            assert files[1]._content == stub_output.content
         # Check correctness of pages
         assert plugin.pages[2].file == files[1]
-        assert plugin.pages[2].title == config_stub_output.title
+        assert plugin.pages[2].title == stub_output.title
         # Check that the local stub absolute path is set correctly
         if not is_remote_stub:
             assert plugin.local_stub_abs_path == "stub/file/abs/path/key"
@@ -257,7 +257,7 @@ def test_on_files(
     ["Root > Example > Path", "Root>Example>Path", "", "    "],
     ids=["space_path","no_space_path", "empty_path", "blank_path"],
 )
-@patch("include_configuration_stubs.plugin.set_stubs_nav_path")
+@patch("include_stubs.plugin.set_stubs_nav_path")
 def test_on_nav(
     mock_set_stubs_nav_path,
     mock_files,

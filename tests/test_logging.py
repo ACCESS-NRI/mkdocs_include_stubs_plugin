@@ -2,7 +2,7 @@ import pytest
 import logging
 
 from termcolor import colored
-from include_configuration_stubs.logging import get_custom_logger
+from include_stubs.logging import get_custom_logger
 
 @pytest.fixture()
 def logger():

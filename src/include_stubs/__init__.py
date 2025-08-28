@@ -1,5 +1,5 @@
 from . import _version
-from include_configuration_stubs.utils import check_is_installed
+from include_stubs.utils import check_is_installed
 
 REQUIRED_EXECS = ["git"]
 

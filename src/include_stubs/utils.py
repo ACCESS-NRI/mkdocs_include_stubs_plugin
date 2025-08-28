@@ -19,14 +19,14 @@ from mkdocs.structure.files import File, Files
 from mkdocs.structure.nav import Navigation, Section
 from mkdocs.structure.pages import Page
 
-from include_configuration_stubs.config import GitRefType, set_default_stubs_nav_path
-from include_configuration_stubs.logging import get_custom_logger
+from include_stubs.config import GitRefType, set_default_stubs_nav_path
+from include_stubs.logging import get_custom_logger
 
 logger = get_custom_logger(__name__)
 GITHUB_URL = "https://github.com/"
 GITHUB_SSH = "git@github.com:"
 
-ConfigStub = namedtuple("ConfigStub", ["fname", "title", "content"])
+Stub = namedtuple("Stub", ["fname", "title", "content"])
 BaseGitRef = namedtuple("BaseGitRef", ["sha", "name"])
 
 class GitRef(BaseGitRef):
@@ -132,7 +132,7 @@ def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[GitRef]:
     return refs
 
 
-def get_config_stub_fname(
+def get_stub_fname(
     stub_dir: str,
     supported_file_formats: tuple[str, ...],
     is_remote_stub: bool = True,
@@ -140,13 +140,13 @@ def get_config_stub_fname(
     gitsha: Optional[str] = None,
 ) -> Optional[str]:
     """
-    Get the name of the configuration stub file from the GitHub repository.
-    If is_remote_stub is False, it will get the configuration stub name from a local file.
+    Get the name of the stub file from the GitHub repository.
+    If is_remote_stub is False, it will get the stub name from a local file.
     If the specified stub_dir contains exactly one file in a supported format, return the stub name.
 
     Args:
         stub_dir: Str
-            Path to the directory expected to contain the config stub in a supported format.
+            Path to the directory expected to contain the stub in a supported format.
         supported_file_formats: Tuple of Str
             Tuple of supported file formats.
         is_remote_stub: Bool
@@ -161,7 +161,7 @@ def get_config_stub_fname(
 
     Returns:
         Str
-            The configuration stub filename.
+            The stub filename.
     """
     if is_remote_stub:
         api_url = f"https://api.github.com/repos/{repo}/contents/{stub_dir}"
@@ -186,7 +186,7 @@ def get_config_stub_fname(
     return stubs[0]
 
 
-def get_config_stub_content(
+def get_stub_content(
     stub_dir: str,
     fname: str,
     is_remote_stub: bool = True,
@@ -194,14 +194,14 @@ def get_config_stub_content(
     gitsha: Optional[str] = None,
 ) -> Optional[str]:
     """
-    Get the content of the configuration stub from the GitHub repository.
-    If is_remote_stub is False, it will get the configuration stub content from a local file.
+    Get the content of the stub from the GitHub repository.
+    If is_remote_stub is False, it will get the stub content from a local file.
 
     Args:
         stub_dir: Str
-            Path to the directory expected to contain the config stub in a supported format.
+            Path to the directory expected to contain the stub in a supported format.
         fname: Str
-            The name of the configuration stub file.
+            The name of the stub file.
         is_remote_stub: Bool
             If True, the function will try to fetch the stub from a remote GitHub repository.
             If False, it will look for a local file.
@@ -214,7 +214,7 @@ def get_config_stub_content(
 
     Returns:
         Str
-            The configuration stub content.
+            The stub content.
     """
     if is_remote_stub:
         raw_url = f"https://raw.githubusercontent.com/{repo}/{gitsha}/{stub_dir}/{fname}"
@@ -229,7 +229,7 @@ def get_config_stub_content(
             return f.read()
 
 
-def get_config_stub_title(path: str, content: str) -> Optional[str]:
+def get_stub_title(path: str, content: str) -> Optional[str]:
     """
     Get the title of a HTML or MarkDown file from its path and content.
 
@@ -250,20 +250,20 @@ def get_config_stub_title(path: str, content: str) -> Optional[str]:
         return get_md_title(content)
 
 
-def get_config_stub(
+def get_stub(
     stub_dir: str,
     supported_file_formats: tuple[str, ...],
     is_remote_stub: bool = True,
     repo: Optional[str] = None,
     gitsha: Optional[str] = None,
-) -> Optional[ConfigStub]:
+) -> Optional[Stub]:
     """
-    Get the config stub name, content and title formatted as a ConfigStub namedtuple.
-    If is_remote_stub is False, it will get the configuration stub name from a local file.
+    Get the stub name, content and title formatted as a ConfigStub namedtuple.
+    If is_remote_stub is False, it will get the stub name from a local file.
 
     Args:
         stub_dir: Str
-            Path to the directory expected to contain the config stub in a supported format.
+            Path to the directory expected to contain the stub in a supported format.
         supported_file_formats: Tuple of Str
             Tuple of supported file formats.
         is_remote_stub: Bool
@@ -277,11 +277,11 @@ def get_config_stub(
             When is_remote_stub = False, this parameter is ignored.
 
     Returns:
-        ConfigStub
-            The ConfigStub namedtuple containing the config stub name, content and title.
+        Stub
+            The Stub namedtuple containing the stub name, content and title.
     """
     # Get stub filename
-    stub_name = get_config_stub_fname(
+    stub_name = get_stub_fname(
         stub_dir=stub_dir,
         supported_file_formats=supported_file_formats,
         is_remote_stub=is_remote_stub,
@@ -291,7 +291,7 @@ def get_config_stub(
     if stub_name is None:
         return None
     # Get stub content
-    stub_content = get_config_stub_content(
+    stub_content = get_stub_content(
         stub_dir=stub_dir,
         fname=stub_name,
         is_remote_stub=is_remote_stub,
@@ -301,8 +301,8 @@ def get_config_stub(
     if stub_content is None:
         return None
     # # Get stub title
-    title = get_config_stub_title(stub_name, stub_content)
-    return ConfigStub(fname=stub_name, content=stub_content, title=title)
+    title = get_stub_title(stub_name, stub_content)
+    return Stub(fname=stub_name, content=stub_content, title=title)
 
 
 def get_remote_repo_from_local_repo() -> str:
@@ -553,7 +553,7 @@ def add_pages_to_nav(
     section_titles: list[str],
 ) -> None:
     """
-    Add the configuration stubs to the MkDocs navigation.
+    Add the stubs to the MkDocs navigation.
 
     Args:
         nav: mkdocs.structure.nav.Navigation
@@ -582,7 +582,7 @@ def add_pages_to_nav(
             hierarchy = " -> ".join([section_titles[it - 1], title])
             logger.warning(
                 f"Section {hierarchy!r} not found in the site navigation. "
-                f"Creating a new {title!r} section for the configuration stubs."
+                f"Creating a new {title!r} section for the stubs."
             )
             current_parent = add_navigation_hierarchy(
                 current_parent, section_titles[it:]

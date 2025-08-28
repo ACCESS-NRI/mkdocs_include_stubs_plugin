@@ -1,6 +1,6 @@
 import pytest
 
-from include_configuration_stubs.config import (
+from include_stubs.config import (
     set_default_stubs_nav_path,
     GitRefType,
 )

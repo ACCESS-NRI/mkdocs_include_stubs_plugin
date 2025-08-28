@@ -7,19 +7,19 @@ from unittest.mock import MagicMock, patch, mock_open
 import pytest
 from requests import RequestException
 
-from include_configuration_stubs.config import GitRefType
-from include_configuration_stubs.plugin import SUPPORTED_FILE_FORMATS
-from include_configuration_stubs.utils import (
-    ConfigStub,
+from include_stubs.config import GitRefType
+from include_stubs.plugin import SUPPORTED_FILE_FORMATS
+from include_stubs.utils import (
+    Stub,
     GitRef,
     add_navigation_hierarchy,
     add_pages_to_nav,
     append_number_to_file_name,
     check_is_installed,
-    get_config_stub,
-    get_config_stub_content,
-    get_config_stub_fname,
-    get_config_stub_title,
+    get_stub,
+    get_stub_content,
+    get_stub_fname,
+    get_stub_title,
     get_git_refs,
     get_html_title,
     get_md_title,
@@ -59,7 +59,7 @@ def test_run_command(fp):
 def test_check_is_installed_found():
     """Test the check_is_installed function when it passes."""
     exe = "random_example_executable"
-    with patch("include_configuration_stubs.utils.shutil.which", return_value=True):
+    with patch("include_stubs.utils.shutil.which", return_value=True):
         check_is_installed(exe)
 
 
@@ -99,7 +99,7 @@ def test_check_is_installed_not_found():
     ],
     ids=["non-empty-command-output", "empty-command-output"],
 )
-@patch("include_configuration_stubs.utils.get_local_branch")
+@patch("include_stubs.utils.get_local_branch")
 def test_get_git_refs(
     mock_get_local_branch, 
     fp, 
@@ -242,12 +242,12 @@ def test_get_git_refs(
         "local_single_file",
     ],
 )
-@patch("include_configuration_stubs.utils.requests.get")
-@patch("include_configuration_stubs.utils.os.listdir")
-def test_get_config_stub_fname(
+@patch("include_stubs.utils.requests.get")
+@patch("include_stubs.utils.os.listdir")
+def test_get_stub_fname(
     mock_listdir, mock_requests_get, is_remote_stub, response_json, response_raise, os_listdir_output, expected_output
 ):
-    """Test the get_config_stub_fname function."""
+    """Test the get_stub_fname function."""
     if is_remote_stub:
         mock_response = MagicMock()
         mock_response.json.return_value = response_json
@@ -259,8 +259,8 @@ def test_get_config_stub_fname(
     else:
         mock_listdir.return_value = os_listdir_output
     assert (
-        get_config_stub_fname(
-            stub_dir="config/path",
+        get_stub_fname(
+            stub_dir="stub/path",
             supported_file_formats=SUPPORTED_FILE_FORMATS,
             is_remote_stub=is_remote_stub,
             gitsha="sha1234567",
@@ -301,12 +301,12 @@ def test_get_config_stub_fname(
             "local",
         ],
 )
-@patch("include_configuration_stubs.utils.requests.get")
-def test_get_config_stub_content(
+@patch("include_stubs.utils.requests.get")
+def test_get_stub_content(
     mock_response_get, is_remote_stub, response_text, response_raise, fread_output, expected_output
 ):
-    """Test the get_config_stub_content function."""
-    stub_dir="config/path"
+    """Test the get_stub_content function."""
+    stub_dir="stub/path"
     fname="example_name"
     repo="owner/repo"
     gitsha="sha1234567"
@@ -318,7 +318,7 @@ def test_get_config_stub_content(
         else:
             mock_response.raise_for_status.side_effect = None
         mock_response_get.return_value = mock_response
-        assert get_config_stub_content(
+        assert get_stub_content(
             stub_dir=stub_dir,
             fname=fname,
             is_remote_stub=is_remote_stub,
@@ -327,8 +327,8 @@ def test_get_config_stub_content(
         ) == expected_output
     else:
         m = mock_open(read_data=fread_output)
-        with patch("include_configuration_stubs.utils.open", m):
-            output = get_config_stub_content(
+        with patch("include_stubs.utils.open", m):
+            output = get_stub_content(
                 stub_dir=stub_dir,
                 fname=fname,
                 is_remote_stub=is_remote_stub,
@@ -340,19 +340,19 @@ def test_get_config_stub_content(
 
 
 @patch(
-    "include_configuration_stubs.utils.get_html_title",
+    "include_stubs.utils.get_html_title",
     return_value="html",
 )
 @patch(
-    "include_configuration_stubs.utils.get_md_title",
+    "include_stubs.utils.get_md_title",
     return_value="md",
 )
-def test_get_config_stub_title(path, expected_output):
+def test_get_stub_title(path, expected_output):
     """
-    Test the get_config_stub_title function.
+    Test the get_stub_title function.
     """
-    assert get_config_stub_title("some/path.html", "example_content") == "html"
-    assert get_config_stub_title("some/other/path.md", "example_content") == "md"
+    assert get_stub_title("some/path.html", "example_content") == "html"
+    assert get_stub_title("some/other/path.md", "example_content") == "md"
 
 
 @pytest.mark.parametrize(
@@ -362,7 +362,7 @@ def test_get_config_stub_title(path, expected_output):
             "example_name",
             "Example file content",
             "Example title",
-            ConfigStub(
+            Stub(
                 fname="example_name",
                 content="Example file content",
                 title="Example title",
@@ -384,7 +384,7 @@ def test_get_config_stub_title(path, expected_output):
             "example_name",
             "Example file content",
             None,
-            ConfigStub(
+            Stub(
                 fname="example_name",
                 content="Example file content",
                 title=None,
@@ -403,10 +403,10 @@ def test_get_config_stub_title(path, expected_output):
     [True, False],
     ids=["remote", "local"],
 )
-@patch("include_configuration_stubs.utils.get_config_stub_fname")
-@patch("include_configuration_stubs.utils.get_config_stub_content")
-@patch("include_configuration_stubs.utils.get_config_stub_title")
-def test_get_config_stub(
+@patch("include_stubs.utils.get_stub_fname")
+@patch("include_stubs.utils.get_stub_content")
+@patch("include_stubs.utils.get_stub_title")
+def test_get_stub(
     mock_get_title,
     mock_get_content,
     mock_get_fname,
@@ -416,12 +416,12 @@ def test_get_config_stub(
     expected_output,
     is_remote_stub,
 ):
-    """Test the get_config_stub function."""
+    """Test the get_stub function."""
     mock_get_fname.return_value = fname_output
     mock_get_content.return_value = content_output
     mock_get_title.return_value = title_output
-    assert get_config_stub(
-        stub_dir="config/path",
+    assert get_stub(
+        stub_dir="stub/path",
         supported_file_formats=SUPPORTED_FILE_FORMATS,
         is_remote_stub=is_remote_stub,
         repo="owner/repo",
@@ -499,10 +499,10 @@ def test_get_repo_from_input_url_input(config_input, get_repo_from_url_output):
     """Test the get_repo_from_input function."""
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo"
+            "include_stubs.utils.get_remote_repo_from_local_repo"
         ) as mock_get_remote_repo,
         patch(
-            "include_configuration_stubs.utils.get_repo_from_url",
+            "include_stubs.utils.get_repo_from_url",
             return_value=get_repo_from_url_output,
         ) as mock_get_repo_from_url,
     ):
@@ -519,10 +519,10 @@ def test_get_repo_from_input_repo_input():
     config_input = "owner-example/repo_name"
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo"
+            "include_stubs.utils.get_remote_repo_from_local_repo"
         ) as mock_get_remote_repo,
         patch(
-            "include_configuration_stubs.utils.get_repo_from_url"
+            "include_stubs.utils.get_repo_from_url"
         ) as mock_get_repo_from_url,
     ):
         output = get_repo_from_input(config_input)
@@ -546,10 +546,10 @@ def test_get_repo_from_input_repo_input_invalid(config_input):
     """
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo"
+            "include_stubs.utils.get_remote_repo_from_local_repo"
         ) as mock_get_remote_repo,
         patch(
-            "include_configuration_stubs.utils.get_repo_from_url"
+            "include_stubs.utils.get_repo_from_url"
         ) as mock_get_repo_from_url,
         pytest.raises(ValueError) as excinfo,
     ):
@@ -572,11 +572,11 @@ def test_get_repo_from_input_no_input(config_input):
     get_repo_from_url_output = "example/repo"
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
+            "include_stubs.utils.get_remote_repo_from_local_repo",
             return_value=get_remote_repo_output,
         ) as mock_get_remote_repo,
         patch(
-            "include_configuration_stubs.utils.get_repo_from_url",
+            "include_stubs.utils.get_repo_from_url",
             return_value=get_repo_from_url_output,
         ) as mock_get_repo_from_url,
     ):
@@ -598,13 +598,13 @@ def test_get_repo_from_input_no_input_error(config_input):
     """
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
+            "include_stubs.utils.get_remote_repo_from_local_repo",
             side_effect=CalledProcessError(
                 returncode=1, cmd="example", stderr="example_error"
             ),
         ) as mock_get_remote_repo,
         patch(
-            "include_configuration_stubs.utils.get_repo_from_url"
+            "include_stubs.utils.get_repo_from_url"
         ) as mock_get_repo_from_url,
         pytest.raises(ValueError) as excinfo,
     ):
@@ -634,10 +634,10 @@ def test_get_repo_from_input_no_input_error(config_input):
     ],
 )
 @patch(
-    "include_configuration_stubs.utils.get_default_branch_from_remote_repo",
+    "include_stubs.utils.get_default_branch_from_remote_repo",
     return_value="default",
 )
-@patch("include_configuration_stubs.utils.get_local_branch")
+@patch("include_stubs.utils.get_local_branch")
 def test_is_main_website(
     mock_get_local_branch,
     mock_get_default_branch_from_remote_repo,
@@ -653,11 +653,11 @@ def test_is_main_website(
     mock_get_local_branch.return_value = local_branch
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
+            "include_stubs.utils.get_remote_repo_from_local_repo",
             return_value=remote_owner_name,
         ) as mock_get_remote_repo,
         patch(
-            "include_configuration_stubs.utils.get_repo_from_url",
+            "include_stubs.utils.get_repo_from_url",
             return_value=remote_owner_name,
         ) as mock_get_repo_from_url,
     ):
@@ -677,13 +677,13 @@ def test_is_main_website_get_remote_repo_exception(fp):
     fp.register(command, stdout="example_command_output")
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
+            "include_stubs.utils.get_remote_repo_from_local_repo",
             side_effect=CalledProcessError(
                 returncode=1, cmd="example", stderr="example_error"
             ),
         ) as mock_get_remote_repo,
         patch(
-            "include_configuration_stubs.utils.get_repo_from_url",
+            "include_stubs.utils.get_repo_from_url",
         ) as mock_get_repo_from_url,
     ):
         output = is_main_website(main_branch_config_input, repo)
@@ -702,10 +702,10 @@ def test_is_main_website_command_exception(fp):
     fp.register(command, stdout="example_command_output", returncode=1)
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
+            "include_stubs.utils.get_remote_repo_from_local_repo",
         ) as mock_get_remote_repo,
         patch(
-            "include_configuration_stubs.utils.get_repo_from_url",
+            "include_stubs.utils.get_repo_from_url",
         ) as mock_get_repo_from_url,
     ):
         output = is_main_website(main_branch_config_input, repo)
@@ -871,7 +871,7 @@ def test_get_md_title(content, expected_output):
     ],
     ids=["string", "empty", "blank", "none"],
 )
-@patch("include_configuration_stubs.utils.set_default_stubs_nav_path")
+@patch("include_stubs.utils.set_default_stubs_nav_path")
 def test_set_stubs_nav_path(mock_set_default_stubs_nav_path, path, expected_output):
     """
     Test the set_stubs_nav_path function.
@@ -981,7 +981,7 @@ def test_add_pages_to_nav_root(mock_navigation):
         "valid",
     ],
 )
-@patch("include_configuration_stubs.utils.requests.get")
+@patch("include_stubs.utils.requests.get")
 def test_get_default_branch_from_remote_repo(
     mock_requests_get, response_json, response_raise, expected_output
 ):

@@ -1,10 +1,10 @@
 [project]
-name = "mkdocs-include-configuration-stubs-plugin"
+name = "mkdocs-include-stubs-plugin"
 dynamic = ["version"]
 authors = [
   {name = "Davide Marchegiani", email="davide.marchegiani@anu.edu.au"},
 ]
-description = "Mkdocs plugin to include configuration stubs within the build of a website for multiple branches within an ACCESS-NRI config repo."
+description = "Mkdocs plugin to include stubs (single pages) from multiple GitHub branches of a repo within a mkdocs website build."
 license = { file = "LICENSE" }
 keywords = ["mkdocs", "plugin", "mkdocs plugin", "access-nri"]
 requires-python = ">=3.10"
@@ -24,7 +24,7 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/ACCESS-NRI/mkdocs_include_configuration_stubs_plugin"
+Repository = "https://github.com/ACCESS-NRI/mkdocs_include_stubs_plugin"
 
 [build-system]
 build-backend = "setuptools.build_meta"
@@ -34,10 +34,10 @@ requires = [
 ]
 
 [project.entry-points."mkdocs.plugins"]
-include-configuration-stubs = "include_configuration_stubs.plugin:IncludeConfigurationStubsPlugin"
+include-stubs = "include_stubs.plugin:IncludeStubsPlugin"
 
 [project.scripts]
-mkdocs = "include_configuration_stubs.cli:main"
+mkdocs = "include_stubs.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -46,10 +46,10 @@ namespaces = false
 [tool.versioneer]
 VCS = "git"
 style = "pep440"
-versionfile_source = "src/include_configuration_stubs/_version.py"
-versionfile_build = "include_configuration_stubs/_version.py"
+versionfile_source = "src/include_stubs/_version.py"
+versionfile_build = "include_stubs/_version.py"
 tag_prefix = ""
-parentdir_prefix = "mkdocs-include-configuration-stubs-plugin-"
+parentdir_prefix = "mkdocs-include-stubs-plugin-"
 
 [tool.pytest.ini_options]
 pythonpath = "src"

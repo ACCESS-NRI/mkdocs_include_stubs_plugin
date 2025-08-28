@@ -7,13 +7,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from mkdocs.config.base import load_config
 from mkdocs.__main__ import cli
-from include_configuration_stubs.logging import get_custom_logger
-from include_configuration_stubs.utils import get_repo_from_input, run_command, get_default_branch_from_remote_repo
+from include_stubs.logging import get_custom_logger
+from include_stubs.utils import get_repo_from_input, run_command, get_default_branch_from_remote_repo
 
-PLUGIN_NAME = "include-configuration-stubs"
+PLUGIN_NAME = "include-stubs"
 ENTRY_POINT_NAME = "mkdocs"
 SUPPORTED_COMMANDS = ("build", "serve")
-ENV_VARIABLE_NAME = "MKDOCS_INCLUDE_CONFIGURATION_STUBS_ADD_LOCAL_STUB"
+ENV_VARIABLE_NAME = "MKDOCS_INCLUDE_STUBS_ADD_LOCAL_STUB"
 
 logger = get_custom_logger(PLUGIN_NAME)
 
@@ -90,7 +90,7 @@ def get_plugin_config(config_path=None) -> dict | None:
     # This function runs outside of the mkdocs context, therefore we need to parse the plugin configuration
     # from the mkdocs.yaml file.
     config = load_config(config_path)
-    plugin_config = config.get("plugins", {}).get("include-configuration-stubs") # type: ignore
+    plugin_config = config.get("plugins", {}).get("include-stubs") # type: ignore
     if plugin_config:
         return plugin_config.config
     return None
@@ -147,10 +147,10 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
         Parsed command-line arguments.
     """
     DESCRIPTION = (
-        "Wrapper for the mkdocs CLI, designed to work with the include-configuration-stubs plugin.\n\n"
+        "Wrapper for the mkdocs CLI, designed to work with the include-stubs plugin.\n\n"
         "If you want to run the default mkdocs command with the same arguments passed to this wrapper, "
         f"run:\n\n {ENTRY_POINT_NAME} -- [arguments]\n\n"
-        "When run from a directory without a 'mkdocs.yml' file (e.g., a configuration stub local branch), "
+        "When run from a directory without a 'mkdocs.yml' file (e.g., a stub local branch), "
         "it builds the site by fetching the 'mkdocs.yml' and related contents from the remote branch BRANCH_NAME "
         "of the public GitHub repository GITHUB_REPOSITORY.\n\n"
         "If a 'mkdocs.yml' exists in the local directory, if the '-f' or '--config-file' option is specified, "
@@ -169,7 +169,7 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
         "--repo", "--repository", "-r",
         dest="repo",
         metavar="GITHUB_REPOSITORY", 
-        help="When the 'mkdocs.yml' file is not found in the local directory (e.g., when the local branch contains a configuration stub), " \
+        help="When the 'mkdocs.yml' file is not found in the local directory (e.g., when the local branch contains a stub), " \
             "the specified repository is used to fetch the 'mkdocs.yml' and related contents to build the site. " \
             "It can be specified in one of the following formats: 1. GitHub URL (e.g., https://github.com/OWNER/REPO), " \
             "2. GitHub SSH (e.g., git@github.com:OWNER/REPO.git), 3. OWNER/REPO. " \
@@ -180,7 +180,7 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
         "--branch", "-b",
         dest="branch",
         metavar="BRANCH_NAME", 
-        help="When the 'mkdocs.yml' file is not found in the local directory (e.g., when the local branch contains a configuration stub), " \
+        help="When the 'mkdocs.yml' file is not found in the local directory (e.g., when the local branch contains a stub), " \
             "the specified branch will be used to fetch the 'mkdocs.yml' and related contents from the repository to build the site. " \
             "If not specified, the repository's default branch will be used.",
     )
@@ -223,7 +223,7 @@ def main():
             # If the plugin configuration is not found, run the default mkdocs command
             if not plugin_config:
                 logger.warning(
-                    "The 'include-configuration-stubs' plugin is not included in the 'mkdocs.yml' config file. "
+                    "The 'include-stubs' plugin is not included in the 'mkdocs.yml' config file. "
                     f"Falling back to the default mkdocs command: 'mkdocs {default_mkdocs_arguments_list}'."
                 )
                 run_default_mkdocs_command(default_mkdocs_arguments)

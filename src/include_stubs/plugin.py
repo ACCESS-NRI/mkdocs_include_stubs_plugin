@@ -10,14 +10,14 @@ from mkdocs.structure.files import Files, File
 from mkdocs.livereload import LiveReloadServer
 
 from typing import Callable, Optional
-from include_configuration_stubs.config import (
+from include_stubs.config import (
     ConfigScheme,
     GitRefType,
 )
-from include_configuration_stubs.utils import (
+from include_stubs.utils import (
     GitRef,
     add_pages_to_nav,
-    get_config_stub,
+    get_stub,
     get_git_refs,
     get_repo_from_input,
     is_main_website,
@@ -26,14 +26,14 @@ from include_configuration_stubs.utils import (
     get_dest_uri_for_local_stub,
     keep_unique_refs,
 )
-from include_configuration_stubs.logging import get_custom_logger
-from include_configuration_stubs.cli import ENV_VARIABLE_NAME
+from include_stubs.logging import get_custom_logger
+from include_stubs.cli import ENV_VARIABLE_NAME
 
 logger = get_custom_logger(__name__)
 SUPPORTED_FILE_FORMATS = (".md", ".html")
 
 
-class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
+class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
     def get_git_refs_for_website(self) -> list[GitRef]:
         repo = self.repo
         is_build_for_main_website = is_main_website(
@@ -50,7 +50,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         if pattern.strip():
             ref_type = website_config["ref_type"]
             logger.info(
-                f"Including '{website_type}' configuration stubs from Git {GitRefType(ref_type)!s} following the pattern '{pattern}'."
+                f"Including '{website_type}' stubs from Git {GitRefType(ref_type)!s} following the pattern '{pattern}'."
             )
             # Add stubs to the site
             refs = get_git_refs(
@@ -69,7 +69,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
             if pattern.strip():
                 ref_type = main_website_config["ref_type"]
                 logger.info(
-                    f"Including 'main' configuration stubs from Git {GitRefType(ref_type)!s} following the pattern '{pattern}'."
+                    f"Including 'main' stubs from Git {GitRefType(ref_type)!s} following the pattern '{pattern}'."
                 )
                 refs.extend(
                     get_git_refs(
@@ -106,35 +106,35 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         ref: Optional[GitRef] = None,
     ) -> None:
         """
-        Add a configuration stub to the site.
+        Add a stub to the site.
         If `is_remote_stub` is True, it will fetch the stub from the remote repository,
         otherwise it will fetch it from the local directory.
         """
-        # Get the configuration stub file
-        config_stub = get_config_stub(
+        # Get the stub file
+        stub = get_stub(
             stub_dir=stubs_dir,
             supported_file_formats=SUPPORTED_FILE_FORMATS,
             is_remote_stub=is_remote_stub,
             repo=self.repo,
             gitsha=ref.sha if ref else None,
         )
-        if config_stub:
-            fname = config_stub.fname
+        if stub:
+            fname = stub.fname
             if is_remote_stub:
-                #  Create the configuration stub file
-                config_stub_file = File.generated(
+                #  Create the stub file
+                stub_file = File.generated(
                     config=config,
                     src_uri=fname,
-                    content=config_stub.content,
+                    content=stub.content,
                 )
                 # Change the destination path by prepending the stubs_parent_url
-                config_stub_file.dest_path = os.path.join(
-                    stubs_parent_url, config_stub_file.dest_path
+                stub_file.dest_path = os.path.join(
+                    stubs_parent_url, stub_file.dest_path
                 )
             else:
                 use_directory_urls = config["use_directory_urls"]
-                #  Add the configuration stub file to the site files
-                config_stub_file = File(
+                #  Add the stub file to the site files
+                stub_file = File(
                     path=fname,
                     src_dir=os.path.abspath(stubs_dir),
                     dest_dir=config["site_dir"],
@@ -146,25 +146,25 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
                         SUPPORTED_FILE_FORMATS,
                     ),
                 )
-                self.local_stub_abs_path = config_stub_file.abs_src_path
+                self.local_stub_abs_path = stub_file.abs_src_path
             #  Make the file unique
-            make_file_unique(config_stub_file, files)
-            #  Include the configuration stub file to the site
-            files.append(config_stub_file)
-            #  Create a page for the configuration stub file
-            config_stub_page = Page(
+            make_file_unique(stub_file, files)
+            #  Include the stub file to the site
+            files.append(stub_file)
+            #  Create a page for the stub file
+            stub_page = Page(
                 config=config,
-                title=config_stub.title or config_stub_file.src_uri.capitalize(),
-                file=config_stub_file,
+                title=stub.title or stub_file.src_uri.capitalize(),
+                file=stub_file,
             )
-            self.pages.append(config_stub_page)
+            self.pages.append(stub_page)
             if is_remote_stub:
                 msg_location = f"Git ref {ref!r}"
             else:
-                msg_location = f"{config_stub_file.src_dir!r}"
+                msg_location = f"{stub_file.src_dir!r}"
             logger.info(
-                f"Configuration stub {config_stub.fname!r} found in {msg_location}. "
-                f"Added related page {config_stub_page.title!r} at {config_stub_file.dest_path!r}."
+                f"Stub {stub.fname!r} found in {msg_location}. "
+                f"Added related page {stub_page.title!r} at {stub_file.dest_path!r}."
             )
         else:
             if is_remote_stub:
@@ -172,19 +172,19 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
             else:
                 msg_location = f"the local {stubs_dir!r} directory. Skipping addition of local stub."
             logger.warning(
-                f"No uniquely identifiable configuration stub found in {msg_location} "
+                f"No uniquely identifiable stub found in {msg_location} "
                 f"This may happen if the {stubs_dir!r} directory is missing, or if no stub files or multiple conflicting candidates "
                 "are found within it."
             )
 
     def on_files(self, files: Files, config: MkDocsConfig) -> Files:
         """
-        Dynamically add configuration stubs to the MkDocs files list.
+        Dynamically add stubs to the MkDocs files list.
         """
         self.pages: list[Page] = []
         refs = self.refs
         stubs_dir = self.config["stubs_dir"]
-        logger.info(f"Looking for configuration stubs in {stubs_dir!r}.")
+        logger.info(f"Looking for stubs in {stubs_dir!r}.")
         stubs_parent_url = self.config["stubs_parent_url"]
         # If a local stub is present, add it to the files so it's included in the site and
         # it is updated live when using `mkdocs serve ...`
@@ -199,7 +199,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
                 is_remote_stub=False,
             )
         # All other stubs are added from the Git repository:
-        # For each ref, add its configuration stubs to the site, if present
+        # For each ref, add its stubs to the site, if present
         for ref in refs:
             self.add_stub_to_site(
                 config=config,
@@ -225,7 +225,7 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         add_pages_to_nav(nav, sorted_pages, nav_path_segments)
         nav_path = " > ".join(nav_path_segments)
         logger.info(
-            f"Added configuration stubs pages in the site navigation under {nav_path!r}."
+            f"Added stubs pages in the site navigation under {nav_path!r}."
         )
         return nav
 
@@ -233,6 +233,6 @@ class IncludeConfigurationStubsPlugin(BasePlugin[ConfigScheme]):
         self, server: LiveReloadServer, config: MkDocsConfig, builder: Callable
     ) -> LiveReloadServer:
         if hasattr(self, "local_stub_abs_path"):
-            # Add the local configuration stub file to the live-reload server
+            # Add the local stub file to the live-reload server
             server.watch(self.local_stub_abs_path, builder) # type: ignore[arg-type]
         return server
