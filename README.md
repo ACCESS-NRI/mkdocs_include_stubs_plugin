@@ -75,7 +75,7 @@ In addition to the requirements specified in the `pyproject.toml` file, this plu
 - `stubs_parent_url`
     Parent url path, relative to the website root url, for the stubs.
     Use an empty string (`""`) to specify the website root url.
-    Default value is `configurations`. TODO: change this to empty string
+    Default value is an empty string.
     
     Example: 
     If the root url is `www.examplesite.org` and `stubs_parent_url` is set to `added_pages/stubs`, then a stub file named `stub1.md` would be added to the URL: `www.examplesite.org/added_pages/stubs/stub1`
