@@ -1,9 +1,9 @@
 from . import _version
-from include_stubs.utils import check_is_installed
+from include_stubs.utils import print_exe_version
 
-REQUIRED_EXECS = ["git"]
+REQUIRED_EXES = ["git", "gh"]
 
-for exe in REQUIRED_EXECS:
-    check_is_installed(exe)
+for exe in REQUIRED_EXES:
+    print_exe_version(exe)
 
 __version__ = _version.get_versions()["version"]

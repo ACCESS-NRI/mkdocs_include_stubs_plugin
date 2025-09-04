@@ -4,7 +4,6 @@ Module for utility functions.
 
 import os
 import re
-import shutil
 import subprocess
 from collections import namedtuple
 from functools import partial
@@ -29,10 +28,14 @@ GITHUB_SSH = "git@github.com:"
 Stub = namedtuple("Stub", ["fname", "title", "content"])
 BaseGitRef = namedtuple("BaseGitRef", ["sha", "name"])
 
+class GitHubApiRateLimitError(Exception):
+    pass
+
 class GitRef(BaseGitRef):
     """
     Named tuple to represent a Git reference with its SHA and name.
     """
+
     def __repr__(self) -> str:
         return f"{self.name} ({self.sha})"
 
@@ -63,9 +66,9 @@ def run_command(command: Sequence[str]) -> str:
     return result.stdout.strip()
 
 
-def check_is_installed(executable: str) -> None:
+def print_exe_version(executable: str) -> None:
     """
-    Check if a required executable is installed on the system.
+    Print the executable version.
     Raises an EnvironmentError if the executable is not found.
 
     Args:
@@ -74,13 +77,16 @@ def check_is_installed(executable: str) -> None:
 
     Returns:
         None
-            Raises an EnvironmentError if the executable is not found.
+            Prints the executable version and raises an EnvironmentError if the executable is not found.
     """
-    # Check if Git is installed
-    if not shutil.which(executable):
+    try:
+        version = run_command([executable, "--version"])
+    except subprocess.SubprocessError:
         raise EnvironmentError(
-            f"'{executable}' is required but not found. Please install it and try again."
+            f"Failed to get '{executable}' version. Please ensure it is installed correctly."
         )
+    else:
+        logger.info(f"'{executable}' version: {version}")
 
 
 def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[GitRef]:
@@ -120,16 +126,35 @@ def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[GitRef]:
             sha, name = ref.split("\t")
             if (
                 # Exclude annotated tags (ending with '^{}') because the non-annotated
-                # references (same name without '^{}') always exist and point to the same 
+                # references (same name without '^{}') always exist and point to the same
                 # working tree content
                 not (name.startswith("refs/tags/") and name.endswith("^{}"))
                 # Exclude the current local branch, because its files need to be added
-                # directly from the local branch, to allow for the 'serve' command to 
-                # track changes to those files. 
+                # directly from the local branch, to allow for the 'serve' command to
+                # track changes to those files.
                 and (name != f"refs/heads/{local_branch}")
             ):
-                refs.append(GitRef(sha=sha, name=name.removeprefix("refs/tags/").removeprefix("refs/heads/")))
+                refs.append(
+                    GitRef(
+                        sha=sha,
+                        name=name.removeprefix("refs/tags/").removeprefix(
+                            "refs/heads/"
+                        ),
+                    )
+                )
     return refs
+
+
+def get_gh_remaining_rate_limit() -> int:
+    """
+    Get the remaining GitHub API rate limit.
+
+    Returns:
+        Int
+            The remaining GitHub API rate limit.
+    """
+    remaining_rate_limit = run_command(["gh", "api", "rate_limit", "--jq", ".rate.remaining"])
+    return int(remaining_rate_limit)
 
 
 def get_stub_fname(
@@ -164,15 +189,22 @@ def get_stub_fname(
             The stub filename.
     """
     if is_remote_stub:
-        api_url = f"https://api.github.com/repos/{repo}/contents/{stub_dir}"
-        params = {"ref": gitsha}
+        api_url = f"repos/{repo}/contents/{stub_dir}?ref={gitsha}"
         try:
-            resp = requests.get(api_url, params=params)
-            resp.raise_for_status()
-            entries = resp.json()
-        except requests.RequestException:
-            return None
-        files = [e["name"] for e in entries]
+            command = ["gh", "api", api_url, "--jq", ".[] | .name"]
+            output = run_command(command)
+        except subprocess.SubprocessError:
+            remaining_gh_rate = get_gh_remaining_rate_limit()
+            if remaining_gh_rate == 0:
+                raise GitHubApiRateLimitError(
+                    "GitHub API rate limit exceeded. "
+                    "Please try again later or authenticate with GitHub CLI using `gh auth`.\n"
+                    "For more information about GitHub API rate limits, see: "
+                    "https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api"
+                )
+            else:
+                return None
+        files = output.split("\n") if output else []
     else:
         files = os.listdir(stub_dir)
     stubs = [
@@ -217,7 +249,9 @@ def get_stub_content(
             The stub content.
     """
     if is_remote_stub:
-        raw_url = f"https://raw.githubusercontent.com/{repo}/{gitsha}/{stub_dir}/{fname}"
+        raw_url = (
+            f"https://raw.githubusercontent.com/{repo}/{gitsha}/{stub_dir}/{fname}"
+        )
         try:
             raw_resp = requests.get(raw_url)
             raw_resp.raise_for_status()
@@ -286,7 +320,7 @@ def get_stub(
         supported_file_formats=supported_file_formats,
         is_remote_stub=is_remote_stub,
         repo=repo,
-        gitsha=gitsha
+        gitsha=gitsha,
     )
     if stub_name is None:
         return None
@@ -637,10 +671,10 @@ def get_local_branch() -> str:
 
 
 def get_dest_uri_for_local_stub(
-    stub_fname: str, 
-    stubs_parent_url: str, 
+    stub_fname: str,
+    stubs_parent_url: str,
     use_directory_urls: bool,
-    supported_file_formats: tuple[str, ...]
+    supported_file_formats: tuple[str, ...],
 ) -> str:
     """
     Get the destination URI for a local stub file.
@@ -659,16 +693,17 @@ def get_dest_uri_for_local_stub(
         Str
             The destination URI for the local stub file.
     """
-    for suffix in supported_file_formats: # pragma: no branch
-        if stub_fname.endswith(suffix): # pragma: no branch
+    for suffix in supported_file_formats:  # pragma: no branch
+        if stub_fname.endswith(suffix):  # pragma: no branch
             stub_fname_no_suffix = stub_fname.removesuffix(suffix)
             break
     dest_uri = os.path.join(stubs_parent_url, stub_fname_no_suffix)
-    return dest_uri if not use_directory_urls else os.path.join(dest_uri,"index.html")
+    return dest_uri if not use_directory_urls else os.path.join(dest_uri, "index.html")
+
 
 def keep_unique_refs(refs: list[GitRef]) -> list[GitRef]:
     """
-    Filter Git references keeping only 
+    Filter Git references keeping only
     first appearances of the same SHA.
 
     Args:

@@ -1,7 +1,6 @@
 # fp is a fixture provided by pytest-subprocess.
 
-import logging
-from subprocess import CalledProcessError
+from subprocess import CalledProcessError, SubprocessError
 from unittest.mock import MagicMock, patch, mock_open
 
 import pytest
@@ -10,12 +9,13 @@ from requests import RequestException
 from include_stubs.config import GitRefType
 from include_stubs.plugin import SUPPORTED_FILE_FORMATS
 from include_stubs.utils import (
+    GitHubApiRateLimitError,
     Stub,
     GitRef,
     add_navigation_hierarchy,
     add_pages_to_nav,
     append_number_to_file_name,
-    check_is_installed,
+    print_exe_version,
     get_stub,
     get_stub_content,
     get_stub_fname,
@@ -27,19 +27,14 @@ from include_stubs.utils import (
     get_repo_from_input,
     get_repo_from_url,
     is_main_website,
-    logger,
     make_file_unique,
     set_stubs_nav_path,
     get_default_branch_from_remote_repo,
     run_command,
     get_dest_uri_for_local_stub,
     keep_unique_refs,
+    get_gh_remaining_rate_limit,
 )
-
-
-@pytest.fixture(autouse=True)
-def silence_logs():
-    logger.setLevel(logging.CRITICAL)
 
 
 @pytest.fixture
@@ -55,24 +50,23 @@ def test_run_command(fp):
     assert result == "Hello, World!"
     assert command in fp.calls
 
-
-def test_check_is_installed_found():
-    """Test the check_is_installed function when it passes."""
+@patch("include_stubs.utils.logger")
+def test_print_exe_version_executable_installed(mock_logger):
+    """Test the print_exe_version function when the executable is installed."""
     exe = "random_example_executable"
-    with patch("include_stubs.utils.shutil.which", return_value=True):
-        check_is_installed(exe)
+    with patch("include_stubs.utils.run_command", return_value="1.2.3") as mock_run_command:
+        print_exe_version(exe)
+        mock_run_command.assert_called_once_with([exe, "--version"])
+        mock_logger.info.assert_called_once_with(f"'{exe}' version: 1.2.3")
 
 
-def test_check_is_installed_not_found():
-    """Test the check_is_installed function when the executable is not found."""
+def test_print_exe_version_executable_not_installed(fp):
+    """Test the print_exe_version function when the executable is installed."""
     exe = "random_example_executable"
-    with patch("shutil.which", return_value=False):
-        with pytest.raises(EnvironmentError) as excinfo:
-            check_is_installed(exe)
-            assert (
-                str(excinfo.value)
-                == f"'{exe}' is required but not found. Please install it and try again."
-            )
+    fp.register([f"{exe}", "--version"], returncode=1)
+    with pytest.raises(EnvironmentError) as excinfo:
+        print_exe_version(exe)
+        assert str(excinfo.value) == f"Failed to get '{exe}' version. Please ensure it is installed correctly."
 
 
 @pytest.mark.parametrize(
@@ -121,148 +115,158 @@ def test_get_git_refs(
     if command_output:
         mock_get_local_branch.assert_called_once()
 
+def test_get_gh_remaining_rate_limit(fp):
+    """Test the get_gh_remaining_rate_limit function."""
+    command = ["gh", "api", "rate_limit", "--jq", ".rate.remaining"]
+    fp.register(command, stdout="5000")
+    result = get_gh_remaining_rate_limit()
+    assert result == 5000
+
 @pytest.mark.parametrize(
-    "is_remote_stub, response_json, response_raise, os_listdir_output, expected_output",
+    "command_output, return_code, expected_output",
     [
         (
-            True,
             None,
-            True,
+            1,
             None,
-            None,
-        ),  # remote_requests_error
+        ),  # requests_error
         (
-            True,
-            [
-                {"name": "name_without_extensionmd"},
-                {"name": "name_without_extensionhtml"},
-                {"name": "name_with_other_extension.jpg"},
-            ],
-            False,
+            "name_without_extensionmd\nname_without_extensionhtml\nname_with_other_extension.jpg",
+            0,
             None,
-            None,
-        ),  # remote_no_extension
+        ),  # no_extension
         (
-            False,
+            "name_with_extension.md\nname_with_not_supported_extension.jpg",
+            0,
+            "name_with_extension.md",
+        ),  # multiple_files_valid
+        (
+            "name_with_extension.md\nname_with_supported_extension.html",
+            0,
             None,
-            False,
+        ),  # multiple_supported_files
+        (
+            "name_with_extension.md\nname_with_supported_extension.md",
+            0,
+            None,
+        ),  # same_supported_files
+        (
+            "name_with_extension.html",
+            0,
+            "name_with_extension.html",
+        ),  # single_file
+    ],
+    ids=[
+        "requests_error",
+        "no_extension",
+        "multiple_files_valid",
+        "multiple_supported_files",
+        "same_supported_files",
+        "single_file",
+    ],
+)
+@patch("include_stubs.utils.get_gh_remaining_rate_limit", return_value=2143)
+def test_get_stub_fname_remote(
+    mock_get_rate_limit, command_output, return_code, expected_output, fp,
+):
+    """Test the get_stub_fname function for remote GitHub ref."""
+    repo = "owner/repo"
+    gitsha = "sha1234567"
+    stub_dir="stub/path"
+    api_url = f"repos/{repo}/contents/{stub_dir}?ref={gitsha}"
+    command = ["gh", "api", api_url, "--jq", ".[] | .name"]
+    fp.register(command, stdout=command_output, returncode=return_code)
+    assert (
+        get_stub_fname(
+            stub_dir=stub_dir,
+            supported_file_formats=SUPPORTED_FILE_FORMATS,
+            is_remote_stub=True,
+            gitsha=gitsha,
+            repo=repo,
+        ) == expected_output
+    )
+
+
+@patch("include_stubs.utils.get_gh_remaining_rate_limit", return_value=0)
+def test_get_stub_fname_remote_rate_limit_exceeded(
+    mock_get_rate_limit, fp,
+):
+    """
+    Test the get_stub_fname function for remote GitHub ref, when
+    the  API rate limit is exceeded.
+    """
+    repo = "owner/repo"
+    gitsha = "sha1234567"
+    stub_dir="stub/path"
+    api_url = f"repos/{repo}/contents/{stub_dir}?ref={gitsha}"
+    command = ["gh", "api", api_url, "--jq", ".[] | .name"]
+    fp.register(command, returncode=1)
+    with pytest.raises(GitHubApiRateLimitError):
+        get_stub_fname(
+            stub_dir=stub_dir,
+            supported_file_formats=SUPPORTED_FILE_FORMATS,
+            is_remote_stub=True,
+            gitsha=gitsha,
+            repo=repo,
+        )
+
+
+@pytest.mark.parametrize(
+    "os_listdir_output, expected_output",
+    [
+        (
             [
                 "name_without_extensionmd",
                 "name_without_extensionhtml",
                 "name_with_other_extension.jpg",
             ],
             None,
-        ),  # local_no_extension
+        ),  # no_extension
         (
-            True,
-            [
-                {"name": "name_with_extension.md"},
-                {"name": "name_with_not_supported_extension.jpg"},
-            ],
-            False,
-            None,
-            "name_with_extension.md",
-        ),  # remote_multiple_files_valid
-        (
-            False,
-            None,
-            False,
             [
                 "name_with_extension.md",
                 "name_with_not_supported_extension.jpg",
             ],
             "name_with_extension.md",
-        ),  # local_multiple_files_valid
+        ),  # multiple_files_valid
         (
-            True,
-            [
-                {"name": "name_with_extension.md"},
-                {"name": "name_with_supported_extension.html"},
-            ],
-            False,
-            None,
-            None,
-        ),  # remote_multiple_supported_files
-        (
-            False,
-            None,
-            False,
             [
                 "name_with_extension.md",
                 "name_with_supported_extension.html",
             ],
             None,
-        ),  # local_multiple_supported_files
+        ),  # multiple_supported_files
         (
-            True,
-            [
-                {"name": "name_with_extension.md"},
-                {"name": "name_with_supported_extension.md"},
-            ],
-            False,
-            None,
-            None,
-        ),  # remote_same_supported_files
-        (
-            False,
-            None,
-            False,
             [
                 "name_with_extension.md",
                 "name_with_supported_extension.md",
             ],
             None,
-        ),  # local_same_supported_files
+        ),  # same_supported_files
         (
-            True,
-            [{"name": "name_with_extension.html"}],
-            False,
-            None,
-            "name_with_extension.html",
-        ),  # remote_single_file
-        (
-            False,
-            None,
-            False,
             ["name_with_extension.html"],
             "name_with_extension.html",
-        ),  # local_single_file
+        ),  # single_file
     ],
     ids=[
-        "remote_requests_error",
-        "remote_no_extension",
-        "local_no_extension",
-        "remote_multiple_files_valid",
-        "local_multiple_files_valid",
-        "remote_multiple_supported_files",
-        "local_multiple_supported_files",
-        "remote_same_supported_files",
-        "local_same_supported_files",
-        "remote_single_file",
-        "local_single_file",
+        "no_extension",
+        "multiple_files_valid",
+        "multiple_supported_files",
+        "same_supported_files",
+        "single_file",
     ],
 )
-@patch("include_stubs.utils.requests.get")
 @patch("include_stubs.utils.os.listdir")
-def test_get_stub_fname(
-    mock_listdir, mock_requests_get, is_remote_stub, response_json, response_raise, os_listdir_output, expected_output
+def test_get_stub_fname_local(
+    mock_listdir, os_listdir_output, expected_output
 ):
     """Test the get_stub_fname function."""
-    if is_remote_stub:
-        mock_response = MagicMock()
-        mock_response.json.return_value = response_json
-        if response_raise:
-            mock_response.raise_for_status.side_effect = RequestException
-        else:
-            mock_response.raise_for_status.side_effect = None
-        mock_requests_get.return_value = mock_response
-    else:
-        mock_listdir.return_value = os_listdir_output
+    mock_listdir.return_value = os_listdir_output
     assert (
         get_stub_fname(
             stub_dir="stub/path",
             supported_file_formats=SUPPORTED_FILE_FORMATS,
-            is_remote_stub=is_remote_stub,
+            is_remote_stub=False,
             gitsha="sha1234567",
             repo="owner/repo",
         )
@@ -472,7 +476,7 @@ def test_get_repo_from_url(repo_url, expected_output, raises_error):
     if raises_error:
         with pytest.raises(ValueError) as excinfo:
             get_repo_from_url(repo_url)
-            # assert str(excinfo.value) == "Invalid GitHub repo URL: '{repo_url}'"
+            assert str(excinfo.value) == "Invalid GitHub repo URL: '{repo_url}'"
     else:
         output = get_repo_from_url(repo_url)
         assert output == expected_output
