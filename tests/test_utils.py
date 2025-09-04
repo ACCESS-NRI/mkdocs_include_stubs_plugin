@@ -1,6 +1,6 @@
 # fp is a fixture provided by pytest-subprocess.
 
-from subprocess import CalledProcessError, SubprocessError
+from subprocess import CalledProcessError
 from unittest.mock import MagicMock, patch, mock_open
 
 import pytest
@@ -962,46 +962,42 @@ def test_add_pages_to_nav_root(mock_navigation):
         assert isinstance(page.parent, MagicMock)
 
 
-@pytest.mark.parametrize(
-    "response_json, response_raise, expected_output",
-    [
-        (
-            None,
-            True,
-            None,
-        ),  # requests_error
-        (
-            {
-                "something": "example",
-                "default_branch": "default",
-                "name": "some_name",
-            },
-            False,
-            "default",
-        ),  # valid
-    ],
-    ids=[
-        "requests_error",
-        "valid",
-    ],
-)
-@patch("include_stubs.utils.requests.get")
-def test_get_default_branch_from_remote_repo(
-    mock_requests_get, response_json, response_raise, expected_output
+def test_get_default_branch_from_remote_repo_valid(
+    fp,
 ):
     """
-    Test the get_default_branch_from_remote_repo function.
+    Test the get_default_branch_from_remote_repo function when the command is successful.
     """
-    repo = "owner/repo"
-    mock_response = MagicMock()
-    mock_response.json.return_value = response_json
-    mock_requests_get.return_value = mock_response
-    if response_raise:
-        mock_response.ok = False
-        with pytest.raises(ValueError):
-            get_default_branch_from_remote_repo(repo)
-    else:
-        assert get_default_branch_from_remote_repo(repo) == expected_output
+    remote_repo = "owner/repo"
+    api_url = f"repos/{remote_repo}"
+    command = ["gh", "api", api_url, "--jq", ".default_branch"]
+    fp.register(command, stdout="default")
+    assert get_default_branch_from_remote_repo(remote_repo) == "default"
+
+
+@pytest.mark.parametrize(
+    "remaining_rate_limit",
+    [0, 13],
+    ids=["gh_api_rate_limit_exceeded", "gh_api_rate_limit_not_exceeded"],
+)
+def test_get_default_branch_from_remote_repo_error(
+    remaining_rate_limit, fp,
+):
+    """
+    Test the get_default_branch_from_remote_repo function when the command is not successful.
+    """
+    remote_repo = "owner/repo"
+    api_url = f"repos/{remote_repo}"
+    command = ["gh", "api", api_url, "--jq", ".default_branch"]
+    fp.register(command, returncode=1)
+    exception_class = GitHubApiRateLimitError if remaining_rate_limit == 0 else ValueError
+    with (
+        patch("include_stubs.utils.get_gh_remaining_rate_limit", return_value=remaining_rate_limit),
+        pytest.raises(exception_class),
+    ):
+        get_default_branch_from_remote_repo(remote_repo)
+
+
 
 
 @pytest.mark.parametrize(

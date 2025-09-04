@@ -5,6 +5,7 @@ Module for utility functions.
 import os
 import re
 import subprocess
+from subprocess import SubprocessError
 from collections import namedtuple
 from functools import partial
 from itertools import count
@@ -29,7 +30,14 @@ Stub = namedtuple("Stub", ["fname", "title", "content"])
 BaseGitRef = namedtuple("BaseGitRef", ["sha", "name"])
 
 class GitHubApiRateLimitError(Exception):
-    pass
+    def __init__(
+        self, 
+        message: str = "GitHub API rate limit exceeded. "
+            "Please try again later or authenticate with GitHub CLI using `gh auth`.\n"
+            "For more information about GitHub API rate limits, see: "
+            "https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api"
+    ) -> None:
+        super().__init__(message)
 
 class GitRef(BaseGitRef):
     """
@@ -60,7 +68,7 @@ def run_command(command: Sequence[str]) -> str:
     try:
         result = _run_command(command)
     except subprocess.CalledProcessError as e:
-        raise subprocess.SubprocessError(
+        raise SubprocessError(
             f"Command '{' '.join(command)}' failed with error: {e.stderr.strip()}"
         )
     return result.stdout.strip()
@@ -81,7 +89,7 @@ def print_exe_version(executable: str) -> None:
     """
     try:
         version = run_command([executable, "--version"])
-    except subprocess.SubprocessError:
+    except SubprocessError:
         raise EnvironmentError(
             f"Failed to get '{executable}' version. Please ensure it is installed correctly."
         )
@@ -193,15 +201,11 @@ def get_stub_fname(
         try:
             command = ["gh", "api", api_url, "--jq", ".[] | .name"]
             output = run_command(command)
-        except subprocess.SubprocessError:
+        except SubprocessError:
             remaining_gh_rate = get_gh_remaining_rate_limit()
             if remaining_gh_rate == 0:
-                raise GitHubApiRateLimitError(
-                    "GitHub API rate limit exceeded. "
-                    "Please try again later or authenticate with GitHub CLI using `gh auth`.\n"
-                    "For more information about GitHub API rate limits, see: "
-                    "https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api"
-                )
+                raise GitHubApiRateLimitError()
+
             else:
                 return None
         files = output.split("\n") if output else []
@@ -389,7 +393,7 @@ def get_repo_from_input(repo_config_input: Optional[str]) -> str:
             if not repo_config_input
             else repo_config_input
         )
-    except subprocess.SubprocessError as e:
+    except SubprocessError as e:
         raise ValueError(
             f"No GitHub repository specified. Failed to retrieve the GitHub repository from local directory: {e.stderr.strip()}"
         ) from e
@@ -419,7 +423,7 @@ def is_main_website(main_branch_config_input: Optional[str], repo: str) -> bool:
     try:
         remote_repo = get_remote_repo_from_local_repo()
         local_branch = get_local_branch()
-    except subprocess.SubprocessError:
+    except SubprocessError:
         return False
     remote_owner_name = get_repo_from_url(remote_repo)
     return (main_branch_config_input == local_branch) and (repo == remote_owner_name)
@@ -648,14 +652,20 @@ def get_default_branch_from_remote_repo(remote_repo: str) -> str:
         Str
             The name of the remote repository's default branch.
     """
-    url = f"https://api.github.com/repos/{remote_repo}"
-    response = requests.get(url)
-    if not response.ok:
-        raise ValueError(
-            f"Failed to retrieve the default branch for the repository {remote_repo!r}. "
-            "Please check the repository name and your network connection."
-        )
-    return response.json()["default_branch"]
+    api_url = f"repos/{remote_repo}"
+    command = ["gh", "api", api_url, "--jq", ".default_branch"]
+    try:
+        default_branch = run_command(command)
+    except SubprocessError:
+        remaining_gh_rate = get_gh_remaining_rate_limit()
+        if remaining_gh_rate == 0:
+            raise GitHubApiRateLimitError()
+        else:
+            raise ValueError(
+                f"Failed to retrieve the default branch for the repository {remote_repo!r}. "
+                "Please check the repository name and your network connection."
+            )
+    return default_branch
 
 
 def get_local_branch() -> str:
