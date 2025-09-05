@@ -34,6 +34,9 @@ SUPPORTED_FILE_FORMATS = (".md", ".html")
 
 
 class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
+    _cached_remote_files = Files([])
+    _cached_remote_pages: list[Page] = []
+
     def get_git_refs_for_website(self) -> list[GitRef]:
         repo = self.repo
         is_build_for_main_website = is_main_website(
@@ -96,8 +99,6 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
         self.stubs_nav_path = set_stubs_nav_path(
             self.config["stubs_nav_path"], self.config["stubs_parent_url"]
         )
-        self._cached_remote_files = Files([])
-        self._cached_remote_pages: list[Page] = []
         return config
 
 
@@ -165,9 +166,9 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
             self.pages.append(stub_page)
             if is_remote_stub:
                 # Add remote files to the cache
-                self._cached_remote_files.append(stub_file)
+                IncludeStubsPlugin._cached_remote_files.append(stub_file)
                 # Add remote page to the cache
-                self._cached_remote_pages.append(stub_page)
+                IncludeStubsPlugin._cached_remote_pages.append(stub_page)
                 logger.info(f"Stub {stub.fname!r} and related page added to remote cache.")
                 msg_location = f"Git ref {ref!r}"
             else:
@@ -191,7 +192,7 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
         """
         Dynamically add stubs to the MkDocs files list.
         """
-        self.pages = self._cached_remote_pages
+        self.pages = self._cached_remote_pages.copy()
         refs = self.refs
         stubs_dir = self.config["stubs_dir"]
         logger.info(f"Looking for stubs in {stubs_dir!r}.")
@@ -210,9 +211,9 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
             )
         # All other stubs are added from the GitHub remote repository:
         # If there are cached remote files, append them to the files directly
-        if len(self._cached_remote_files) > 0:
+        if len(IncludeStubsPlugin._cached_remote_files) > 0:
             logger.info("Cached remote files found. Adding them to the site files.")
-            for file in self._cached_remote_files:
+            for file in IncludeStubsPlugin._cached_remote_files:
                 files.append(file)
         else:
             logger.info("No cached remote files found. Fetching files from remote stubs.")
@@ -226,7 +227,6 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
                     is_remote_stub=True,
                     ref=ref,
                 )
-        
         return files
 
     def on_nav(self, nav: Navigation, config: MkDocsConfig, files: Files) -> Navigation:

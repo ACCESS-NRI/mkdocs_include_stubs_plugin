@@ -50,12 +50,12 @@ def create_plugin(mock_plugin_config, mock_files):
         _cached_remote_pages=[],
     ):
         plugin = IncludeStubsPlugin()
+        IncludeStubsPlugin._cached_remote_files = _cached_remote_files
+        IncludeStubsPlugin._cached_remote_pages = _cached_remote_pages
         plugin.load_config(config)
         plugin.repo = repo
         plugin.refs = refs
         plugin.stubs_nav_path = stubs_nav_path
-        plugin._cached_remote_files = _cached_remote_files
-        plugin._cached_remote_pages = _cached_remote_pages
         return plugin
 
     return _plugin
