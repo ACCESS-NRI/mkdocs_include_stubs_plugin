@@ -93,6 +93,11 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
         logger.info(f"GitHub Repository set to '{self.repo}'.")
         # Get the git refs for the website
         self.refs = self.get_git_refs_for_website()
+        self.stubs_nav_path = set_stubs_nav_path(
+            self.config["stubs_nav_path"], self.config["stubs_parent_url"]
+        )
+        self._cached_remote_files = Files([])
+        self._cached_remote_pages: list[Page] = []
         return config
 
 
@@ -159,6 +164,11 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
             )
             self.pages.append(stub_page)
             if is_remote_stub:
+                # Add remote files to the cache
+                self._cached_remote_files.append(stub_file)
+                # Add remote page to the cache
+                self._cached_remote_pages.append(stub_page)
+                logger.info(f"Stub {stub.fname!r} and related page added to remote cache.")
                 msg_location = f"Git ref {ref!r}"
             else:
                 msg_location = f"{stub_file.src_dir!r}"
@@ -181,7 +191,7 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
         """
         Dynamically add stubs to the MkDocs files list.
         """
-        self.pages: list[Page] = []
+        self.pages = self._cached_remote_pages
         refs = self.refs
         stubs_dir = self.config["stubs_dir"]
         logger.info(f"Looking for stubs in {stubs_dir!r}.")
@@ -198,17 +208,25 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
                 files=files,
                 is_remote_stub=False,
             )
-        # All other stubs are added from the Git repository:
-        # For each ref, add its stubs to the site, if present
-        for ref in refs:
-            self.add_stub_to_site(
-                config=config,
-                stubs_dir=stubs_dir,
-                stubs_parent_url=stubs_parent_url,
-                files=files,
-                is_remote_stub=True,
-                ref=ref,
-            )
+        # All other stubs are added from the GitHub remote repository:
+        # If there are cached remote files, append them to the files directly
+        if len(self._cached_remote_files) > 0:
+            logger.info("Cached remote files found. Adding them to the site files.")
+            for file in self._cached_remote_files:
+                files.append(file)
+        else:
+            logger.info("No cached remote files found. Fetching files from remote stubs.")
+            # For each ref, add its stubs to the site, if present
+            for ref in refs:
+                self.add_stub_to_site(
+                    config=config,
+                    stubs_dir=stubs_dir,
+                    stubs_parent_url=stubs_parent_url,
+                    files=files,
+                    is_remote_stub=True,
+                    ref=ref,
+                )
+        
         return files
 
     def on_nav(self, nav: Navigation, config: MkDocsConfig, files: Files) -> Navigation:
@@ -217,10 +235,7 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
             self.pages,
             key=lambda page: page.title,
         )
-        stubs_nav_path = set_stubs_nav_path(
-            self.config["stubs_nav_path"], self.config["stubs_parent_url"]
-        )
-        nav_path_segments = [seg.strip() for seg in stubs_nav_path.split(">")]
+        nav_path_segments = [seg.strip() for seg in self.stubs_nav_path.split(">")]
         # Add stubs to the navigation
         add_pages_to_nav(nav, sorted_pages, nav_path_segments)
         nav_path = " > ".join(nav_path_segments)

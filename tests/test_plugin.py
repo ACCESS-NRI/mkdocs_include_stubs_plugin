@@ -38,14 +38,24 @@ def mock_plugin_config():
 
 
 @pytest.fixture
-def create_plugin(mock_plugin_config):
+def create_plugin(mock_plugin_config, mock_files):
     """Factory function to create the plugin with the prescribed configuration options."""
 
-    def _plugin(config=mock_plugin_config, **kwargs):
+    def _plugin(
+        config=mock_plugin_config,
+        repo="owner/repo",
+        refs=[],
+        stubs_nav_path="",
+        _cached_remote_files=mock_files([]),
+        _cached_remote_pages=[],
+    ):
         plugin = IncludeStubsPlugin()
         plugin.load_config(config)
-        for key, value in kwargs.items():
-            setattr(plugin, key, value)
+        plugin.repo = repo
+        plugin.refs = refs
+        plugin.stubs_nav_path = stubs_nav_path
+        plugin._cached_remote_files = _cached_remote_files
+        plugin._cached_remote_pages = _cached_remote_pages
         return plugin
 
     return _plugin
@@ -88,7 +98,7 @@ def test_get_git_refs_for_website(
     mock_is_main, mock_get_refs, create_plugin, is_main_website_build, no_main, main_pattern, preview_pattern
 ):
     """Test the get_git_refs_for_website method for the main website."""
-    plugin = create_plugin(repo="some_repo")
+    plugin = create_plugin()
     plugin.config["preview_website"]["no_main"] = no_main
     plugin.config["main_website"]["pattern"] = main_pattern
     plugin.config["preview_website"]["pattern"] = preview_pattern
@@ -192,7 +202,7 @@ def test_add_stub_to_site(
 ):
     """Test the add_stub_to_site method."""
     files = mock_files([MagicMock()])
-    plugin = create_plugin(repo="example_repo")
+    plugin = create_plugin()
     plugin.pages = [MagicMock(), MagicMock()]
     mock_get_stub.return_value = stub_output
     mock_get_dest_uri_for_local_stub.return_value = "dest/uri"
@@ -217,6 +227,8 @@ def test_add_stub_to_site(
         assert files[1].dest_dir == "site/dir"
         if is_remote_stub:  # Check content only for remote stubs
             assert files[1]._content == stub_output.content
+            assert plugin._cached_remote_files[0] == files[-1]
+            assert plugin._cached_remote_pages[0] == plugin.pages[-1]
         # Check correctness of pages
         assert plugin.pages[2].file == files[1]
         assert plugin.pages[2].title == stub_output.title
@@ -233,23 +245,45 @@ def test_add_stub_to_site(
         "no_env_variable",
     ],
 )
+@pytest.mark.parametrize(
+    "cached_remote_files",
+    [[MagicMock(), MagicMock()], []],
+    ids=[
+        "cached_remote_files_set",
+        "empty_cached_remote_files",
+    ],
+)
+@pytest.mark.parametrize(
+    "cached_remote_pages",
+    [[MagicMock()], []],
+    ids=[
+        "cached_remote_pages_set",
+        "empty_cached_remote_pages",
+    ],
+)
 def test_on_files(
     create_plugin,
     mock_files,
     create_mock_mkdocs_config,
     env_variable_value,
+    cached_remote_files,
+    cached_remote_pages,
     monkeypatch,
 ):
     """Test the on_files method."""
     files = mock_files()
-    plugin = create_plugin(repo="example_repo", refs={"ref1", "ref2"})
+    plugin = create_plugin(
+        refs={"ref1", "ref2"},
+        _cached_remote_files=cached_remote_files,
+        _cached_remote_pages=cached_remote_pages,
+    )
     plugin.add_stub_to_site = MagicMock()
     monkeypatch.setenv(ENV_VARIABLE_NAME, env_variable_value)
     plugin.on_files(files, create_mock_mkdocs_config())
-    if env_variable_value:
-        assert plugin.add_stub_to_site.call_count == 3
-    else:
-        assert plugin.add_stub_to_site.call_count == 2
+    n_calls_for_env_variable = 1 if env_variable_value else 0
+    n_calls_for_cached_remote_files = len(plugin.refs) if len(cached_remote_files) == 0 else 0
+    assert plugin.add_stub_to_site.call_count == n_calls_for_cached_remote_files + n_calls_for_env_variable
+    assert len(plugin.pages) == len(cached_remote_pages)
 
 
 @pytest.mark.parametrize(
@@ -270,7 +304,7 @@ def test_on_nav(
     mock_set_stubs_nav_path.return_value = stubs_nav_path
     # Create a mock plugin
     files = mock_files()
-    plugin = create_plugin(repo="example_repo")
+    plugin = create_plugin(stubs_nav_path=stubs_nav_path)
     plugin.get_git_refs_for_website = MagicMock(return_value={"ref1", "ref2"})
     pages = [
         MagicMock(title="B"),
@@ -318,7 +352,7 @@ def test_on_nav(
 )
 def test_on_serve(create_plugin, create_mock_mkdocs_config, has_local_stub_abs_path):
     """Test the on_serve method."""
-    plugin = create_plugin(repo="example_repo")
+    plugin = create_plugin()
     if has_local_stub_abs_path:
         plugin.local_stub_abs_path = "local/stub/abs/path"
     server = MagicMock()
