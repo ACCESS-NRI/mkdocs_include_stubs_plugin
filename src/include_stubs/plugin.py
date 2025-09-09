@@ -1,41 +1,42 @@
 """Main plugin."""
 
 import os
+from typing import Callable, Optional
 
 from mkdocs.config.defaults import MkDocsConfig
-from mkdocs.plugins import BasePlugin
-from mkdocs.structure.pages import Page
-from mkdocs.structure.nav import Navigation
-from mkdocs.structure.files import Files, File
 from mkdocs.livereload import LiveReloadServer
+from mkdocs.plugins import BasePlugin
+from mkdocs.structure.files import File, Files
+from mkdocs.structure.nav import Navigation
+from mkdocs.structure.pages import Page
 
-from typing import Callable, Optional
+from include_stubs.cli import ENV_VARIABLE_NAME
 from include_stubs.config import (
     ConfigScheme,
     GitRefType,
 )
+from include_stubs.logging import get_custom_logger
 from include_stubs.utils import (
     GitRef,
     add_pages_to_nav,
-    get_stub,
+    get_dest_uri_for_local_stub,
     get_git_refs,
     get_repo_from_input,
+    get_stub,
     is_main_website,
+    keep_unique_refs,
     make_file_unique,
     set_stubs_nav_path,
-    get_dest_uri_for_local_stub,
-    keep_unique_refs,
 )
-from include_stubs.logging import get_custom_logger
-from include_stubs.cli import ENV_VARIABLE_NAME
 
 logger = get_custom_logger(__name__)
 SUPPORTED_FILE_FORMATS = (".md", ".html")
 
 
 class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
-    _cached_remote_files = Files([])
-    _cached_remote_pages: list[Page] = []
+    _cached_remote_refs: list[GitRef] = None  # type: ignore
+    _cached_remote_files: Files = None  # type: ignore
+    _cached_remote_pages: list[Page] = None  # type: ignore
 
     def get_git_refs_for_website(self) -> list[GitRef]:
         repo = self.repo
@@ -90,17 +91,16 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
         logger.info(f"Found the following Git references (Git SHAs): {unique_refs}.")
         return unique_refs
 
-
     def on_config(self, config: MkDocsConfig) -> MkDocsConfig:
         self.repo = get_repo_from_input(self.config["repo"])
         logger.info(f"GitHub Repository set to '{self.repo}'.")
-        # Get the git refs for the website
-        self.refs = self.get_git_refs_for_website()
+        # Get the git refs for the website if they are not already cached
+        if IncludeStubsPlugin._cached_remote_refs is None:
+            IncludeStubsPlugin._cached_remote_refs = self.get_git_refs_for_website()
         self.stubs_nav_path = set_stubs_nav_path(
             self.config["stubs_nav_path"], self.config["stubs_parent_url"]
         )
         return config
-
 
     def add_stub_to_site(
         self,
@@ -166,10 +166,16 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
             self.pages.append(stub_page)
             if is_remote_stub:
                 # Add remote files to the cache
+                if IncludeStubsPlugin._cached_remote_files is None:
+                    IncludeStubsPlugin._cached_remote_files = Files([])
                 IncludeStubsPlugin._cached_remote_files.append(stub_file)
                 # Add remote page to the cache
+                if IncludeStubsPlugin._cached_remote_pages is None:
+                    IncludeStubsPlugin._cached_remote_pages = []
                 IncludeStubsPlugin._cached_remote_pages.append(stub_page)
-                logger.info(f"Stub {stub.fname!r} and related page added to remote cache.")
+                logger.info(
+                    f"Stub {stub.fname!r} and related page added to remote cache."
+                )
                 msg_location = f"Git ref {ref!r}"
             else:
                 msg_location = f"{stub_file.src_dir!r}"
@@ -179,7 +185,9 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
             )
         else:
             if is_remote_stub:
-                msg_location = f"{stubs_dir!r} for Git ref {ref!r}. Skipping this reference."
+                msg_location = (
+                    f"{stubs_dir!r} for Git ref {ref!r}. Skipping this reference."
+                )
             else:
                 msg_location = f"the local {stubs_dir!r} directory. Skipping addition of local stub."
             logger.warning(
@@ -192,14 +200,17 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
         """
         Dynamically add stubs to the MkDocs files list.
         """
-        self.pages = self._cached_remote_pages.copy()
-        refs = self.refs
+        self.pages = (
+            self._cached_remote_pages.copy()
+            if self._cached_remote_pages is not None
+            else []
+        )
         stubs_dir = self.config["stubs_dir"]
         logger.info(f"Looking for stubs in {stubs_dir!r}.")
         stubs_parent_url = self.config["stubs_parent_url"]
         # If a local stub is present, add it to the files so it's included in the site and
         # it is updated live when using `mkdocs serve ...`
-        # Add the local stub only if a local mkdocs.yml was not found and the mkdocs.yml is 
+        # Add the local stub only if a local mkdocs.yml was not found and the mkdocs.yml is
         # taken from the remote repo
         if os.environ.get(ENV_VARIABLE_NAME, None):
             self.add_stub_to_site(
@@ -211,14 +222,16 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
             )
         # All other stubs are added from the GitHub remote repository:
         # If there are cached remote files, append them to the files directly
-        if len(IncludeStubsPlugin._cached_remote_files) > 0:
+        if IncludeStubsPlugin._cached_remote_files is not None:
             logger.info("Cached remote files found. Adding them to the site files.")
             for file in IncludeStubsPlugin._cached_remote_files:
                 files.append(file)
         else:
-            logger.info("No cached remote files found. Fetching files from remote stubs.")
-            # For each ref, add its stubs to the site, if present
-            for ref in refs:
+            logger.info(
+                "No cached remote files found. Fetching files from remote stubs."
+            )
+            # For each remote ref, add its stubs to the site, if present
+            for ref in IncludeStubsPlugin._cached_remote_refs:
                 self.add_stub_to_site(
                     config=config,
                     stubs_dir=stubs_dir,
@@ -239,9 +252,7 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
         # Add stubs to the navigation
         add_pages_to_nav(nav, sorted_pages, nav_path_segments)
         nav_path = " > ".join(nav_path_segments)
-        logger.info(
-            f"Added stubs pages in the site navigation under {nav_path!r}."
-        )
+        logger.info(f"Added stubs pages in the site navigation under {nav_path!r}.")
         return nav
 
     def on_serve(
@@ -249,5 +260,5 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
     ) -> LiveReloadServer:
         if hasattr(self, "local_stub_abs_path"):
             # Add the local stub file to the live-reload server
-            server.watch(self.local_stub_abs_path, builder) # type: ignore[arg-type]
+            server.watch(self.local_stub_abs_path, builder)  # type: ignore[arg-type]
         return server
