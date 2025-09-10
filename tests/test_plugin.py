@@ -107,7 +107,7 @@ def test_on_config(
 @patch("include_stubs.plugin.is_main_website")
 def test_get_git_refs_for_website(
     mock_is_main,
-    mock_get_refs,
+    mock_get_git_refs,
     create_plugin,
     is_main_website_build,
     no_main,
@@ -120,7 +120,7 @@ def test_get_git_refs_for_website(
     plugin.config["main_website"]["pattern"] = main_pattern
     plugin.config["preview_website"]["pattern"] = preview_pattern
     mock_is_main.return_value = is_main_website_build
-    mock_get_refs.return_value = [
+    mock_get_git_refs.return_value = [
         GitRef(sha="123", name="ref1"),
         GitRef(sha="456", name="ref2"),
         GitRef(sha="123", name="ref4"),
@@ -133,16 +133,16 @@ def test_get_git_refs_for_website(
         and main_pattern  # non-empty main_pattern
         and preview_pattern  # non-empty preview_pattern
     ):  # mock_get_refs should be called twice if the build is for a preview website, with main website included and both patterns non-empty.
-        assert mock_get_refs.call_count == 2
+        assert mock_get_git_refs.call_count == 2
         # First call for preview website
-        first_call_args = mock_get_refs.call_args_list[0]
+        first_call_args = mock_get_git_refs.call_args_list[0]
         assert first_call_args[0] == (plugin.repo,)  # args
         assert first_call_args[1] == {
             "pattern": plugin.config["preview_website"]["pattern"],
             "ref_type": plugin.config["preview_website"]["ref_type"],
         }  # kwargs
         # Second call for main website
-        second_call_args = mock_get_refs.call_args_list[1]
+        second_call_args = mock_get_git_refs.call_args_list[1]
         assert second_call_args[0] == (plugin.repo,)  # args
         assert second_call_args[1] == {
             "pattern": plugin.config["main_website"]["pattern"],
@@ -159,7 +159,7 @@ def test_get_git_refs_for_website(
             and main_pattern
         )  # build for preview website with main website, with empty preview pattern and non-empty main pattern
     ):
-        mock_get_refs.assert_called_once_with(
+        mock_get_git_refs.assert_called_once_with(
             plugin.repo,
             pattern=plugin.config["main_website"]["pattern"],
             ref_type=plugin.config["main_website"]["ref_type"],
@@ -175,13 +175,13 @@ def test_get_git_refs_for_website(
             and not main_pattern
         )  # build for preview website with main website, with non-empty preview pattern and empty main pattern
     ):
-        mock_get_refs.assert_called_once_with(
+        mock_get_git_refs.assert_called_once_with(
             plugin.repo,
             pattern=plugin.config["preview_website"]["pattern"],
             ref_type=plugin.config["preview_website"]["ref_type"],
         )
     else:
-        mock_get_refs.assert_not_called()
+        mock_get_git_refs.assert_not_called()
     if (
         (
             not main_pattern and not preview_pattern
@@ -331,7 +331,7 @@ def test_add_stub_to_site(
 )
 @patch("include_stubs.plugin.IncludeStubsPlugin.get_git_refs_for_website")
 def test_on_files(
-    mock_get_git_refs,
+    mock_get_git_refs_for_website,
     create_plugin,
     mock_files,
     create_mock_mkdocs_config,
@@ -340,7 +340,7 @@ def test_on_files(
     monkeypatch,
 ):
     """Test the on_files method."""
-    mock_get_git_refs.return_value = [MagicMock(), MagicMock()]
+    mock_get_git_refs_for_website.return_value = [MagicMock(), MagicMock()]
     files = mock_files()
     plugin = create_plugin(
         _cached_remote_stubs=cached_remote_stubs,
@@ -350,7 +350,7 @@ def test_on_files(
     plugin.on_files(files, create_mock_mkdocs_config())
     n_calls_for_env_variable = int(bool(env_variable_value))
     n_calls_for_cached_remote_stubs = (
-        len(mock_get_git_refs.return_value) if cached_remote_stubs is None else 0
+        len(mock_get_git_refs_for_website.return_value) if cached_remote_stubs is None else 0
     )
     assert (
         plugin.add_stub_to_site.call_count
