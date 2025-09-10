@@ -7,6 +7,7 @@ import re
 import subprocess
 from subprocess import SubprocessError
 from collections import namedtuple
+from dataclasses import dataclass
 from functools import partial
 from itertools import count
 from typing import Optional, Sequence
@@ -26,8 +27,16 @@ logger = get_custom_logger(__name__)
 GITHUB_URL = "https://github.com/"
 GITHUB_SSH = "git@github.com:"
 
-Stub = namedtuple("Stub", ["fname", "title", "content"])
 BaseGitRef = namedtuple("BaseGitRef", ["sha", "name"])
+
+@dataclass
+class Stub:
+    fname: str
+    content: str
+    gitref: Optional[str] = None
+    title: Optional[str] = None
+    file: File = None # type: ignore[assignment]
+    page: Page = None # type: ignore[assignment]
 
 class GitHubApiRateLimitError(Exception):
     def __init__(
@@ -196,6 +205,15 @@ def get_stub_fname(
         Str
             The stub filename.
     """
+#     gh api graphql -f query='
+# query {
+#   repository(owner: "ACCESS-NRI", name: "access-om3-configs") {
+#     dev_MC_25km_jra_ryf: object(expression: "1334a87251ab7552ded19cd0bed2a2c84553031b:documentation/stub") {
+#       ... on Tree { entries { name type oid } }
+#     }
+#     dev_MC_25km_jra_ryf2: object(expression: "1334a87251ab7552ded19cd0bed2a2c84553031b:documentation/stub") {
+#       ... on Tree { entries { name type oid } }
+#     }}}'
     if is_remote_stub:
         api_url = f"repos/{repo}/contents/{stub_dir}?ref={gitsha}"
         try:
@@ -296,8 +314,7 @@ def get_stub(
     gitsha: Optional[str] = None,
 ) -> Optional[Stub]:
     """
-    Get the stub name, content and title formatted as a ConfigStub namedtuple.
-    If is_remote_stub is False, it will get the stub name from a local file.
+    Get the stub information and return a Stub object.
 
     Args:
         stub_dir: Str
@@ -316,7 +333,7 @@ def get_stub(
 
     Returns:
         Stub
-            The Stub namedtuple containing the stub name, content and title.
+            The Stub object.
     """
     # Get stub filename
     stub_name = get_stub_fname(
@@ -340,7 +357,7 @@ def get_stub(
         return None
     # # Get stub title
     title = get_stub_title(stub_name, stub_content)
-    return Stub(fname=stub_name, content=stub_content, title=title)
+    return Stub(gitref=gitsha, fname=stub_name, content=stub_content, title=title)
 
 
 def get_remote_repo_from_local_repo() -> str:

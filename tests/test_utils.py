@@ -367,6 +367,7 @@ def test_get_stub_title(path, expected_output):
             "Example file content",
             "Example title",
             Stub(
+                gitref="sha1234567",
                 fname="example_name",
                 content="Example file content",
                 title="Example title",
@@ -389,6 +390,7 @@ def test_get_stub_title(path, expected_output):
             "Example file content",
             None,
             Stub(
+                gitref="sha1234567",
                 fname="example_name",
                 content="Example file content",
                 title=None,

@@ -17,6 +17,7 @@ from include_stubs.config import (
 )
 from include_stubs.logging import get_custom_logger
 from include_stubs.utils import (
+    Stub,
     GitRef,
     add_pages_to_nav,
     get_dest_uri_for_local_stub,
@@ -35,8 +36,7 @@ SUPPORTED_FILE_FORMATS = (".md", ".html")
 
 class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
     _cached_remote_refs: list[GitRef] = None  # type: ignore
-    _cached_remote_files: Files = None  # type: ignore
-    _cached_remote_pages: list[Page] = None  # type: ignore
+    _cached_remote_stubs: Optional[list[Stub]] = None
 
     def get_git_refs_for_website(self) -> list[GitRef]:
         repo = self.repo
@@ -157,24 +157,23 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
             make_file_unique(stub_file, files)
             #  Include the stub file to the site
             files.append(stub_file)
+            # Add the file to the stub object
+            stub.file = stub_file
             #  Create a page for the stub file
             stub_page = Page(
                 config=config,
                 title=stub.title or stub_file.src_uri.capitalize(),
                 file=stub_file,
             )
-            self.pages.append(stub_page)
+            # Add the page to the stub object
+            stub.page = stub_page
             if is_remote_stub:
-                # Add remote files to the cache
-                if IncludeStubsPlugin._cached_remote_files is None:
-                    IncludeStubsPlugin._cached_remote_files = Files([])
-                IncludeStubsPlugin._cached_remote_files.append(stub_file)
-                # Add remote page to the cache
-                if IncludeStubsPlugin._cached_remote_pages is None:
-                    IncludeStubsPlugin._cached_remote_pages = []
-                IncludeStubsPlugin._cached_remote_pages.append(stub_page)
+                # Add remote stub to the cache
+                if IncludeStubsPlugin._cached_remote_stubs is None:
+                    IncludeStubsPlugin._cached_remote_stubs = []
+                IncludeStubsPlugin._cached_remote_stubs.append(stub)
                 logger.info(
-                    f"Stub {stub.fname!r} and related page added to remote cache."
+                    f"Stub {stub.fname!r} added to remote cache."
                 )
                 msg_location = f"Git ref {ref!r}"
             else:
@@ -200,11 +199,6 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
         """
         Dynamically add stubs to the MkDocs files list.
         """
-        self.pages = (
-            self._cached_remote_pages.copy()
-            if self._cached_remote_pages is not None
-            else []
-        )
         stubs_dir = self.config["stubs_dir"]
         logger.info(f"Looking for stubs in {stubs_dir!r}.")
         stubs_parent_url = self.config["stubs_parent_url"]
@@ -222,13 +216,13 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
             )
         # All other stubs are added from the GitHub remote repository:
         # If there are cached remote files, append them to the files directly
-        if IncludeStubsPlugin._cached_remote_files is not None:
-            logger.info("Cached remote files found. Adding them to the site files.")
-            for file in IncludeStubsPlugin._cached_remote_files:
-                files.append(file)
+        if IncludeStubsPlugin._cached_remote_stubs is not None:
+            logger.info("Cached remote stubs found. Adding them to the site.")
+            for stub in IncludeStubsPlugin._cached_remote_stubs:
+                files.append(stub.file)
         else:
             logger.info(
-                "No cached remote files found. Fetching files from remote stubs."
+                "No cached remote stubs found. Fetching files from remote stubs."
             )
             # For each remote ref, add its stubs to the site, if present
             for ref in IncludeStubsPlugin._cached_remote_refs:
@@ -244,8 +238,9 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
 
     def on_nav(self, nav: Navigation, config: MkDocsConfig, files: Files) -> Navigation:
         """Hook to modify the navigation."""
+        all_pages = [stub.page for stub in IncludeStubsPlugin._cached_remote_stubs] if IncludeStubsPlugin._cached_remote_stubs else []
         sorted_pages = sorted(
-            self.pages,
+            all_pages,
             key=lambda page: page.title,
         )
         nav_path_segments = [seg.strip() for seg in self.stubs_nav_path.split(">")]
