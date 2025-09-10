@@ -431,7 +431,7 @@ def test_get_stub(
         supported_file_formats=SUPPORTED_FILE_FORMATS,
         is_remote_stub=is_remote_stub,
         repo="owner/repo",
-        gitsha="sha1234567",
+        gitref=MagicMock(sha="sha1234567"),
     ) == expected_output
     assert mock_get_fname.call_args.kwargs.get('is_remote_stub') == is_remote_stub
     if mock_get_content.call_args is not None:

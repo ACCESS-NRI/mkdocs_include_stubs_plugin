@@ -35,8 +35,19 @@ SUPPORTED_FILE_FORMATS = (".md", ".html")
 
 
 class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
-    _cached_remote_refs: list[GitRef] = None  # type: ignore
     _cached_remote_stubs: Optional[list[Stub]] = None
+    repo: str = None # type: ignore[assignment]
+
+    def on_config(self, config: MkDocsConfig) -> MkDocsConfig:
+        # Get the repository only the first time the plugin runs
+        if IncludeStubsPlugin.repo is None:
+            IncludeStubsPlugin.repo = get_repo_from_input(self.config["repo"])
+            logger.info(f"GitHub Repository set to '{self.repo}'.")
+        self.stubs_nav_path = set_stubs_nav_path(
+            self.config["stubs_nav_path"], self.config["stubs_parent_url"]
+        )
+        return config
+
 
     def get_git_refs_for_website(self) -> list[GitRef]:
         repo = self.repo
@@ -91,16 +102,6 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
         logger.info(f"Found the following Git references (Git SHAs): {unique_refs}.")
         return unique_refs
 
-    def on_config(self, config: MkDocsConfig) -> MkDocsConfig:
-        self.repo = get_repo_from_input(self.config["repo"])
-        logger.info(f"GitHub Repository set to '{self.repo}'.")
-        # Get the git refs for the website if they are not already cached
-        if IncludeStubsPlugin._cached_remote_refs is None:
-            IncludeStubsPlugin._cached_remote_refs = self.get_git_refs_for_website()
-        self.stubs_nav_path = set_stubs_nav_path(
-            self.config["stubs_nav_path"], self.config["stubs_parent_url"]
-        )
-        return config
 
     def add_stub_to_site(
         self,
@@ -122,7 +123,7 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
             supported_file_formats=SUPPORTED_FILE_FORMATS,
             is_remote_stub=is_remote_stub,
             repo=self.repo,
-            gitsha=ref.sha if ref else None,
+            gitref=ref,
         )
         if stub:
             fname = stub.fname
@@ -224,8 +225,9 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
             logger.info(
                 "No cached remote stubs found. Fetching files from remote stubs."
             )
-            # For each remote ref, add its stubs to the site, if present
-            for ref in IncludeStubsPlugin._cached_remote_refs:
+            # For each remote ref, add the remote stub to the site if present
+            refs = self.get_git_refs_for_website()
+            for ref in refs: # type: ignore[attr-defined]
                 self.add_stub_to_site(
                     config=config,
                     stubs_dir=stubs_dir,

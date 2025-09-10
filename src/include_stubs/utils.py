@@ -29,14 +29,14 @@ GITHUB_SSH = "git@github.com:"
 
 BaseGitRef = namedtuple("BaseGitRef", ["sha", "name"])
 
-@dataclass
-class Stub:
-    fname: str
-    content: str
-    gitref: Optional[str] = None
-    title: Optional[str] = None
-    file: File = None # type: ignore[assignment]
-    page: Page = None # type: ignore[assignment]
+
+class GitRef(BaseGitRef):
+    """
+    Named tuple to represent a Git reference with its SHA and name.
+    """
+
+    def __repr__(self) -> str:
+        return f"{self.name} ({self.sha})"
 
 class GitHubApiRateLimitError(Exception):
     def __init__(
@@ -48,13 +48,14 @@ class GitHubApiRateLimitError(Exception):
     ) -> None:
         super().__init__(message)
 
-class GitRef(BaseGitRef):
-    """
-    Named tuple to represent a Git reference with its SHA and name.
-    """
-
-    def __repr__(self) -> str:
-        return f"{self.name} ({self.sha})"
+@dataclass
+class Stub:
+    fname: str
+    content: str
+    gitref: Optional[GitRef] = None
+    title: Optional[str] = None
+    file: File = None # type: ignore[assignment]
+    page: Page = None # type: ignore[assignment]
 
 
 def run_command(command: Sequence[str]) -> str:
@@ -311,7 +312,7 @@ def get_stub(
     supported_file_formats: tuple[str, ...],
     is_remote_stub: bool = True,
     repo: Optional[str] = None,
-    gitsha: Optional[str] = None,
+    gitref: Optional[GitRef] = None,
 ) -> Optional[Stub]:
     """
     Get the stub information and return a Stub object.
@@ -335,6 +336,8 @@ def get_stub(
         Stub
             The Stub object.
     """
+    # Get git SHA
+    gitsha = gitref.sha if gitref else None
     # Get stub filename
     stub_name = get_stub_fname(
         stub_dir=stub_dir,

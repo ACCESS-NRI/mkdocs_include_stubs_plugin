@@ -46,13 +46,11 @@ def create_plugin(mock_plugin_config, mock_files):
         repo="owner/repo",
         stubs_nav_path="",
         _cached_remote_stubs=None,
-        _cached_remote_refs=None,
     ):
         plugin = IncludeStubsPlugin()
         IncludeStubsPlugin._cached_remote_stubs = _cached_remote_stubs
-        IncludeStubsPlugin._cached_remote_refs = _cached_remote_refs
+        IncludeStubsPlugin.repo = repo
         plugin.load_config(config)
-        plugin.repo = repo
         plugin.stubs_nav_path = stubs_nav_path
         return plugin
 
@@ -60,32 +58,29 @@ def create_plugin(mock_plugin_config, mock_files):
 
 
 @pytest.mark.parametrize(
-    "cached_remote_refs",
-    [[MagicMock(), MagicMock()], None],
+    "repo",
+    ["some/repo", None],
     ids=[
-        "cached_remote_refs_set",
-        "cached_remote_refs_None",
+        "repo_set",
+        "repo_None",
     ],
 )
 @patch("include_stubs.plugin.get_repo_from_input")
-@patch("include_stubs.plugin.IncludeStubsPlugin.get_git_refs_for_website")
 def test_on_config(
-    mock_get_git_refs,
     mock_get_repo,
     create_plugin,
     create_mock_mkdocs_config,
-    cached_remote_refs,
+    repo,
 ):
     """Test the on_config method of the plugin."""
-    plugin = create_plugin(_cached_remote_refs=cached_remote_refs)
+    plugin = create_plugin(repo=repo)
     plugin.on_config(create_mock_mkdocs_config())
     # Check that the attributes are set correctly
-    assert plugin.repo == mock_get_repo.return_value
-    if cached_remote_refs is None:
-        assert plugin._cached_remote_refs == mock_get_git_refs.return_value
+    if repo is None:
+        assert plugin.repo == mock_get_repo.return_value
     else:
-        mock_get_git_refs.assert_not_called()
-        assert plugin._cached_remote_refs == cached_remote_refs
+        assert plugin.repo == repo
+        mock_get_repo.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -334,7 +329,9 @@ def test_add_stub_to_site(
         "cached_remote_stubs_None",
     ],
 )
+@patch("include_stubs.plugin.IncludeStubsPlugin.get_git_refs_for_website")
 def test_on_files(
+    mock_get_git_refs,
     create_plugin,
     mock_files,
     create_mock_mkdocs_config,
@@ -343,17 +340,17 @@ def test_on_files(
     monkeypatch,
 ):
     """Test the on_files method."""
+    mock_get_git_refs.return_value = [MagicMock(), MagicMock()]
     files = mock_files()
     plugin = create_plugin(
         _cached_remote_stubs=cached_remote_stubs,
-        _cached_remote_refs=[MagicMock(), MagicMock()],
     )
     plugin.add_stub_to_site = MagicMock()
     monkeypatch.setenv(ENV_VARIABLE_NAME, env_variable_value)
     plugin.on_files(files, create_mock_mkdocs_config())
     n_calls_for_env_variable = int(bool(env_variable_value))
     n_calls_for_cached_remote_stubs = (
-        len(plugin._cached_remote_refs) if cached_remote_stubs is None else 0
+        len(mock_get_git_refs.return_value) if cached_remote_stubs is None else 0
     )
     assert (
         plugin.add_stub_to_site.call_count
