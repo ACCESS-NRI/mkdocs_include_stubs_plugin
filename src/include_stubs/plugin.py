@@ -12,6 +12,7 @@ from mkdocs.structure.pages import Page
 
 from include_stubs.cli import ENV_VARIABLE_NAME
 from include_stubs.config import (
+    SUPPORTED_FILE_FORMATS,
     ConfigScheme,
     GitRefType,
 )
@@ -31,8 +32,7 @@ from include_stubs.utils import (
 )
 
 logger = get_custom_logger(__name__)
-SUPPORTED_FILE_FORMATS = (".md", ".html")
-
+        
 
 class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
     _cached_remote_stubs: Optional[list[Stub]] = None
@@ -227,14 +227,16 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
             )
             # For each remote ref, add the remote stub to the site if present
             refs = self.get_git_refs_for_website()
-            for ref in refs: # type: ignore[attr-defined]
+            # Initialise the Stubs with the refs
+            stubs = [Stub(gitref=ref) for ref in refs]
+            for stub in stubs:
                 self.add_stub_to_site(
                     config=config,
                     stubs_dir=stubs_dir,
                     stubs_parent_url=stubs_parent_url,
                     files=files,
                     is_remote_stub=True,
-                    ref=ref,
+                    ref=stub.gitref,
                 )
         return files
 

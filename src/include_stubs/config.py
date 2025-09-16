@@ -1,11 +1,13 @@
 from enum import StrEnum
 from typing import TypeVar
+from dataclasses import dataclass
 
 from mkdocs.config import Config
 from mkdocs.config import config_options as opt
 
 T = TypeVar("T")
 
+SUPPORTED_FILE_FORMATS = (".md", ".html")
 DEFAULT_PATTERN_MAIN_WEBSITE = r"release-*"
 DEFAULT_PATTERN_PREVIEW_WEBSITE = r"dev-*"
 DEFAULT_STUBS_DIR = "documentation/stub"
@@ -26,6 +28,14 @@ class GitRefType(StrEnum):
             return "tags"
         else:
             return "branches and tags"    
+
+@dataclass
+class GitRef:
+    name: str
+    sha: str
+    
+    def __repr__(self) -> str:
+        return f"{self.name} ({self.sha})"
 
 
 class _MainWebsiteOptions(Config):

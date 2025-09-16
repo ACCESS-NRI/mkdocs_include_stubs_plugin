@@ -5,14 +5,13 @@ Module for utility functions.
 import os
 import re
 import subprocess
-from subprocess import SubprocessError
-from collections import namedtuple
+import requests
+import json
 from dataclasses import dataclass
+from subprocess import SubprocessError
 from functools import partial
 from itertools import count
-from typing import Optional, Sequence
-
-import requests
+from typing import Optional, Sequence, Iterable
 from bs4 import BeautifulSoup
 from markdown import Markdown
 from markdown.extensions.toc import TocExtension
@@ -20,42 +19,33 @@ from mkdocs.structure.files import File, Files
 from mkdocs.structure.nav import Navigation, Section
 from mkdocs.structure.pages import Page
 
-from include_stubs.config import GitRefType, set_default_stubs_nav_path
+from include_stubs.config import GitRefType, GitRef, set_default_stubs_nav_path
 from include_stubs.logging import get_custom_logger
 
 logger = get_custom_logger(__name__)
 GITHUB_URL = "https://github.com/"
 GITHUB_SSH = "git@github.com:"
 
-BaseGitRef = namedtuple("BaseGitRef", ["sha", "name"])
-
-
-class GitRef(BaseGitRef):
-    """
-    Named tuple to represent a Git reference with its SHA and name.
-    """
-
-    def __repr__(self) -> str:
-        return f"{self.name} ({self.sha})"
 
 class GitHubApiRateLimitError(Exception):
     def __init__(
-        self, 
+        self,
         message: str = "GitHub API rate limit exceeded. "
-            "Please try again later or authenticate with GitHub CLI using `gh auth`.\n"
-            "For more information about GitHub API rate limits, see: "
-            "https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api"
+        "Please try again later or authenticate with GitHub CLI using `gh auth`.\n"
+        "For more information about GitHub API rate limits, see: "
+        "https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api",
     ) -> None:
         super().__init__(message)
 
+
 @dataclass
 class Stub:
-    fname: str
-    content: str
-    gitref: Optional[GitRef] = None
+    gitref: GitRef
+    fname: Optional[str] = None
+    content: Optional[str] = None
     title: Optional[str] = None
-    file: File = None # type: ignore[assignment]
-    page: Page = None # type: ignore[assignment]
+    file: Optional[File] = None
+    page: Optional[Page] = None
 
 
 def run_command(command: Sequence[str]) -> str:
@@ -163,82 +153,22 @@ def get_git_refs(repo: str, pattern: str, ref_type: GitRefType) -> list[GitRef]:
     return refs
 
 
-def get_gh_remaining_rate_limit() -> int:
+def gh_rate_limit_reached() -> bool:
     """
-    Get the remaining GitHub API rate limit.
+    Check if the GitHub API rate limit has been reached.
 
     Returns:
-        Int
-            The remaining GitHub API rate limit.
+        Bool
     """
-    remaining_rate_limit = run_command(["gh", "api", "rate_limit", "--jq", ".rate.remaining"])
-    return int(remaining_rate_limit)
-
-
-def get_stub_fname(
-    stub_dir: str,
-    supported_file_formats: tuple[str, ...],
-    is_remote_stub: bool = True,
-    repo: Optional[str] = None,
-    gitsha: Optional[str] = None,
-) -> Optional[str]:
-    """
-    Get the name of the stub file from the GitHub repository.
-    If is_remote_stub is False, it will get the stub name from a local file.
-    If the specified stub_dir contains exactly one file in a supported format, return the stub name.
-
-    Args:
-        stub_dir: Str
-            Path to the directory expected to contain the stub in a supported format.
-        supported_file_formats: Tuple of Str
-            Tuple of supported file formats.
-        is_remote_stub: Bool
-            If True, the function will try to fetch the stub from a remote GitHub repository.
-            If False, it will look for a local file.
-        repo: Str
-            The GitHub Repository to fetch the stub from, when is_remote_stub = True.
-            When is_remote_stub = False, this parameter is ignored.
-        ref: Str
-            The git SHA to fetch the stub from, when is_remote_stub = True.
-            When is_remote_stub = False, this parameter is ignored.
-
-    Returns:
-        Str
-            The stub filename.
-    """
-#     gh api graphql -f query='
-# query {
-#   repository(owner: "ACCESS-NRI", name: "access-om3-configs") {
-#     dev_MC_25km_jra_ryf: object(expression: "1334a87251ab7552ded19cd0bed2a2c84553031b:documentation/stub") {
-#       ... on Tree { entries { name type oid } }
-#     }
-#     dev_MC_25km_jra_ryf2: object(expression: "1334a87251ab7552ded19cd0bed2a2c84553031b:documentation/stub") {
-#       ... on Tree { entries { name type oid } }
-#     }}}'
-    if is_remote_stub:
-        api_url = f"repos/{repo}/contents/{stub_dir}?ref={gitsha}"
-        try:
-            command = ["gh", "api", api_url, "--jq", ".[] | .name"]
-            output = run_command(command)
-        except SubprocessError:
-            remaining_gh_rate = get_gh_remaining_rate_limit()
-            if remaining_gh_rate == 0:
-                raise GitHubApiRateLimitError()
-
-            else:
-                return None
-        files = output.split("\n") if output else []
-    else:
-        files = os.listdir(stub_dir)
-    stubs = [
-        file
-        for file in files
-        for suffix in supported_file_formats
-        if file.endswith(suffix)
+    command = [
+        "gh",
+        "api",
+        "rate_limit",
+        "--jq",
+        "[.resources.[] | .remaining] | any(. == 0)",
     ]
-    if len(stubs) != 1:
-        return None
-    return stubs[0]
+    limit_exceeded = run_command(command)
+    return limit_exceeded == "true"
 
 
 def get_stub_content(
@@ -413,10 +343,10 @@ def get_repo_from_input(repo_config_input: Optional[str]) -> str:
             if not repo_config_input
             else repo_config_input
         )
-    except SubprocessError as e:
+    except SubprocessError:
         raise ValueError(
-            f"No GitHub repository specified. Failed to retrieve the GitHub repository from local directory: {e.stderr.strip()}"
-        ) from e
+            "Cannot determine GitHub repository. No GitHub repository specified in the plugin configuration and local directory is not a git repository."
+        )
     if repo.startswith(GITHUB_URL) or repo.startswith(GITHUB_SSH):
         repo = get_repo_from_url(repo)
     if not re.fullmatch(r"[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+", repo):
@@ -677,8 +607,7 @@ def get_default_branch_from_remote_repo(remote_repo: str) -> str:
     try:
         default_branch = run_command(command)
     except SubprocessError:
-        remaining_gh_rate = get_gh_remaining_rate_limit()
-        if remaining_gh_rate == 0:
+        if gh_rate_limit_reached():
             raise GitHubApiRateLimitError()
         else:
             raise ValueError(
@@ -751,3 +680,223 @@ def keep_unique_refs(refs: list[GitRef]) -> list[GitRef]:
             seen.add(ref.sha)
             unique_refs.append(ref)
     return unique_refs
+
+
+def get_stub_fname(
+    stub_dir: str,
+    supported_file_formats: tuple[str, ...],
+    is_remote_stub: bool = True,
+    repo: Optional[str] = None,
+    gitsha: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Get the name of the stub file from the GitHub repository.
+    If is_remote_stub is False, it will get the stub name from a local file.
+    If the specified stub_dir contains exactly one file in a supported format, return the stub name.
+
+    Args:
+        stub_dir: Str
+            Path to the directory expected to contain the stub in a supported format.
+        supported_file_formats: Tuple of Str
+            Tuple of supported file formats.
+        is_remote_stub: Bool
+            If True, the function will try to fetch the stub from a remote GitHub repository.
+            If False, it will look for a local file.
+        repo: Str
+            The GitHub Repository to fetch the stub from, when is_remote_stub = True.
+            When is_remote_stub = False, this parameter is ignored.
+        ref: Str
+            The git SHA to fetch the stub from, when is_remote_stub = True.
+            When is_remote_stub = False, this parameter is ignored.
+
+    Returns:
+        Str
+            The stub filename.
+    """
+    if is_remote_stub:
+        api_url = f"repos/{repo}/contents/{stub_dir}?ref={gitsha}"
+        try:
+            command = ["gh", "api", api_url, "--jq", ".[] | .name"]
+            output = run_command(command)
+        except SubprocessError:
+            if gh_rate_limit_reached():
+                raise GitHubApiRateLimitError()
+            else:
+                return None
+        files = output.split("\n") if output else []
+    else:
+        files = os.listdir(stub_dir)
+    stubs = [
+        file
+        for file in files
+        for suffix in supported_file_formats
+        if file.endswith(suffix)
+    ]
+    if len(stubs) != 1:
+        return None
+    return stubs[0]
+
+
+def get_unique_stub_fname(
+    filenames: Iterable[str],
+    supported_file_formats: tuple[str, ...],
+) -> Optional[str]:
+    """
+    From the GitHub GraphQL API response content, return the unique stub filename if exactly one file
+    in a supported format is found, otherwise return None.
+
+    Args:
+        graphql_response: Dict
+            The GitHub API response content for a specific git ref.
+
+    Returns:
+        Str or None
+            The unique stub filename if exactly one file in a supported
+            format is found, otherwise return None.
+    """
+    fname = [
+        name
+        for name in filenames
+        for suffix in supported_file_formats
+        if name.endswith(suffix)
+    ]
+    if len(fname) != 1:
+        return None
+    return fname[0]
+
+
+class RemoteStubs(list):
+    def __init__(
+        self,
+        repo: str,
+        stubs_dir: str,
+        supported_file_formats: tuple[str, ...],
+        stubs: list[Stub] = [],
+    ):
+        super().__init__(stubs)
+        self.repo = repo
+        self.stubs_dir = stubs_dir
+        self.supported_file_formats = supported_file_formats
+
+    def _get_graphql_query_string(
+        self,
+    ) -> str:
+        """
+        Generate a GraphQL query string to fetch file
+        names from a GitHub repository for each of the
+        stubs in self.
+
+        Returns:
+            Str
+                The GraphQL query string.
+        """
+        repo_owner, repo_name = self.repo.split("/")
+        query_parts = [
+            f'query {{ repository(owner: "{repo_owner}", name: "{repo_name}") {{',
+        ]
+        for i, stub in enumerate(self):
+            gitsha = stub.gitref.sha
+            # For simplicity, we alias each query with a unique 'r<index>' name based on the stub index
+            query_parts.append(
+                f'r{i}: object(expression: "{gitsha}:{self.stubs_dir}") {{ ... on Tree {{ entries {{ name type oid }}}}}}'
+            )
+        query_parts.append("}}")
+        return "".join(query_parts)
+
+    def _populate_remote_stub_fnames(
+        self,
+    ) -> None:
+        """
+        Uses GitHub GraphQL API to get the name of the remote stub file from its git ref, for each
+        Stub in self.stubs.
+        If exactly one file in a supported format is found, it sets the fname attribute of the
+        corresponding Stub. Otherwise, it removes the Stub from self.stubs.
+
+        Returns:
+            None
+                It modifies self.stubs in place.
+        """
+        query_string = self._get_graphql_query_string()
+        try:
+            command = ["gh", "api", "graphql", "-f", f"query={query_string}"]
+            output = run_command(command)
+        except SubprocessError:
+            if gh_rate_limit_reached():
+                raise GitHubApiRateLimitError()
+            else:
+                raise ValueError(
+                    f"Failed to retrieve the remote stub filenames for the repository {self.repo!r}. "
+                    "Please check the repository name and your network connection."
+                )
+        # For each ref, inspect the response and set the fname attribute if exactly one file in
+        # the supported file format is found
+        refcontents = list(json.loads(output)["data"]["repository"].values())
+        for i in range(len(self) - 1, -1, -1):  # iterate backwards to allow deletion
+            content = refcontents[i]
+            if (
+                content is not None
+                and (
+                    fname := get_unique_stub_fname(
+                        (entry["name"] for entry in content["entries"]),
+                        self.supported_file_formats,
+                    )
+                )
+                is not None
+            ):
+                # If a unique file name is found, set it as the Stub fname attribute
+                self[i].fname = fname
+            else:
+                # Otherwise, remove the Stub from the items
+                del self[i]
+
+    def _populate_remote_stub_contents(
+        self,
+    ) -> None:
+        """
+        Get the content of each Stub in self.stubs from the GitHub repository.
+
+        Returns:
+            None
+                It modifies self.stubs in place.
+        """
+        for i in range(len(self) - 1, -1, -1):  # iterate backwards to allow deletion
+            raw_url = f"https://raw.githubusercontent.com/{self.repo}/{self[i].gitref.sha}/{self.stubs_dir}/{self[i].fname}"
+            try:
+                raw_resp = requests.get(raw_url)
+                raw_resp.raise_for_status()
+                # If a content is found, set it as the Stub content attribute
+                self[i].content = raw_resp.text
+            except requests.RequestException:
+                # Otherwise, remove the Stub from the items
+                del self[i]
+
+    def _populate_remote_stub_titles(
+        self,
+    ) -> None:
+        """
+        Get the title of each Stub in self.stubs from their contents.
+
+        Returns:
+            None
+                It modifies self.stubs in place.
+        """
+        for i, stub in enumerate(self):
+            if stub.fname.endswith(".html"):  # html
+                self[i].title = get_html_title(stub.content)
+            else:  # markdown
+                self[i].title = get_md_title(stub.content)
+
+    def populate_remote_stubs(
+        self,
+    ) -> None:
+        """
+        Populate the fname, content and title attributes of each Stub in self.stubs
+        by fetching the data from the GitHub repository.
+
+        Returns:
+            None
+                It modifies self.stubs in place.
+        """
+        self._populate_remote_stub_fnames()
+        self._populate_remote_stub_contents()
+        self._populate_remote_stub_titles()
