@@ -20,6 +20,7 @@ from include_stubs.logging import get_custom_logger
 from include_stubs.utils import (
     Stub,
     GitRef,
+    RemoteStubs,
     add_pages_to_nav,
     get_dest_uri_for_local_stub,
     get_git_refs,
@@ -227,9 +228,14 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
             )
             # For each remote ref, add the remote stub to the site if present
             refs = self.get_git_refs_for_website()
-            # Initialise the Stubs with the refs
-            stubs = [Stub(gitref=ref) for ref in refs]
-            for stub in stubs:
+            # Create the remote Stubs
+            remotestubs = RemoteStubs(
+                repo=self.repo,
+                stubs_dir=stubs_dir,
+                supported_file_formats=SUPPORTED_FILE_FORMATS,
+                stubs=[Stub(gitref=ref) for ref in refs],
+            )
+            for stub in remotestubs:
                 self.add_stub_to_site(
                     config=config,
                     stubs_dir=stubs_dir,
@@ -242,7 +248,7 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
 
     def on_nav(self, nav: Navigation, config: MkDocsConfig, files: Files) -> Navigation:
         """Hook to modify the navigation."""
-        all_pages = [stub.page for stub in IncludeStubsPlugin._cached_remote_stubs] if IncludeStubsPlugin._cached_remote_stubs else []
+        all_pages = [stub.page for stub in IncludeStubsPlugin._cached_remote_stubs]
         sorted_pages = sorted(
             all_pages,
             key=lambda page: page.title,

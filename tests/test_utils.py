@@ -1165,7 +1165,7 @@ class TestRemoteStubs:
         fp
     ):
         """
-        Test the _populate_remote_stub_fnames method.
+        Test the populate_remote_stub_fnames method.
         """
         command = ["gh", "api", "graphql", "-f", f"query={mock_get_graphql_query_string.return_value}"]
         fp.register(command)
@@ -1251,7 +1251,7 @@ class TestRemoteStubs:
     @patch("include_stubs.utils.RemoteStubs._populate_remote_stub_fnames")
     def test_populate_remote_stubs(self, mock_populate_fnames, mock_populate_contents, mock_populate_titles):
         """
-        Test the populate_remote_stubs method.
+        Test the _populate_remote_stubs method.
         """
         self.remotestubs.populate_remote_stubs()
         mock_populate_fnames.assert_called_once()
