@@ -18,6 +18,7 @@ from markdown.extensions.toc import TocExtension
 from mkdocs.structure.files import File, Files
 from mkdocs.structure.nav import Navigation, Section
 from mkdocs.structure.pages import Page
+from mkdocs.config.defaults import MkDocsConfig
 
 from include_stubs.config import GitRefType, GitRef, set_default_stubs_nav_path
 from include_stubs.logging import get_custom_logger
@@ -768,15 +769,21 @@ def get_unique_stub_fname(
 class RemoteStubs(list):
     def __init__(
         self,
+        stubs: list[Stub],
+        config: MkDocsConfig,
         repo: str,
         stubs_dir: str,
+        stubs_parent_url: str,
         supported_file_formats: tuple[str, ...],
-        stubs: list[Stub] = [],
+        files: Files,
     ):
         super().__init__(stubs)
+        self.config = config
         self.repo = repo
         self.stubs_dir = stubs_dir
         self.supported_file_formats = supported_file_formats
+        self.stubs_parent_url = stubs_parent_url
+        self.files = files
 
     def _get_graphql_query_string(
         self,
@@ -847,6 +854,12 @@ class RemoteStubs(list):
                 self[i].fname = fname
             else:
                 # Otherwise, remove the Stub from the items
+                logger.warning(
+                    f"No uniquely identifiable stub found in {self.stubs_dir!r} for git reference "
+                    f"{self[i].gitref!r}. Skipping this git reference."
+                    f"This may happen if the {self.stubs_dir!r} directory is missing, or if no stub files "
+                    "or multiple conflicting candidate stub files are found within it."
+                )
                 del self[i]
 
     def _populate_remote_stub_contents(
@@ -886,6 +899,44 @@ class RemoteStubs(list):
             else:  # markdown
                 self[i].title = get_md_title(stub.content)
 
+    def _populate_remote_stub_files(self) -> None:
+        """
+        For each Stub in self.stubs, generate the site File.
+
+        Returns:
+            None
+                It modifies self.stubs in place.
+        """
+        for i,stub in enumerate(self):
+            #  Create the stub file
+            stub_file = File.generated(
+                config=self.config,
+                src_uri=stub.fname,
+                content=stub.content,
+            )
+            # Change the destination path by prepending the stubs_parent_url
+            stub_file.dest_path = os.path.join(self.stubs_parent_url, stub_file.dest_path)
+            #  Make the file unique
+            make_file_unique(stub_file, self.files)
+            self.files.append(stub_file)
+            self[i].file = stub_file
+    
+    def _populate_remote_stub_pages(self) -> None:
+        """
+        For each Stub in self.stubs, generate the site Page.
+
+        Returns:
+            None
+                It modifies self.stubs in place.
+        """
+        for i,stub in enumerate(self):
+            stub_page = Page(
+                config=self.config,
+                title=stub.title or stub.file.src_uri.capitalize(),
+                file=stub.file,
+            )
+            self[i].page = stub_page
+    
     def populate_remote_stubs(
         self,
     ) -> None:
@@ -900,3 +951,5 @@ class RemoteStubs(list):
         self._populate_remote_stub_fnames()
         self._populate_remote_stub_contents()
         self._populate_remote_stub_titles()
+        self._populate_remote_stub_files()
+        self._populate_remote_stub_pages()

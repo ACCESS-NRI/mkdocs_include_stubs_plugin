@@ -19,26 +19,7 @@ def silence_logs():
 
 
 @pytest.fixture
-def mock_plugin_config():
-    return {
-        "repo": "some_repo",
-        "main_website": {
-            "pattern": "some_pattern",
-            "ref_type": "branch",
-            "branch": "some_branch",
-        },
-        "preview_website": {
-            "pattern": "preview/*",
-            "ref_type": "tag",
-            "no_main": False,
-        },
-        "stubs_dir": "stubs_dir",
-        "stubs_parent_url": "parent/url/",
-    }
-
-
-@pytest.fixture
-def create_plugin(mock_plugin_config, mock_files):
+def create_plugin(mock_plugin_config):
     """Factory function to create the plugin with the prescribed configuration options."""
 
     def _plugin(

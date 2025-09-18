@@ -39,9 +39,42 @@ from include_stubs.utils import (
 
 
 @pytest.fixture
-def mock_git_refs():
-    pass
+def mock_remotestubs(mock_files, mock_plugin_config):
+    """Factory function to create a RemoteStubs instance with mock parameters."""
 
+    def _remotestubs(
+        stubs = None,
+        config = None,
+        files = None,
+    ):
+        if stubs is None:
+            stubs = [
+                Stub(gitref=GitRef(name="main", sha="abc123")),
+                Stub(gitref=GitRef(name="dev", sha="def456")),
+                Stub(gitref=GitRef(name="other", sha="123456")),
+                Stub(gitref=GitRef(name="other2", sha="345678")),
+            ]
+        if files is None:
+            files = mock_files(
+                [
+                    MagicMock(),
+                    MagicMock(),
+                    MagicMock(),
+                ]
+            )
+        if config is None:
+            config = mock_plugin_config
+        return RemoteStubs(
+            stubs=stubs,
+            config=mock_plugin_config,
+            files=files,
+            repo="example/repo",
+            stubs_dir="stub/path",
+            stubs_parent_url="parent/url",
+            supported_file_formats=(".ext1", ".ext2"),
+        )
+
+    return _remotestubs 
 
 @pytest.fixture
 def graphql_query_string():
@@ -1115,145 +1148,200 @@ def test_get_unique_stub_fname(filenames, expected_output):
     output = get_unique_stub_fname(filenames, supported_file_formats)
     assert expected_output == output
 
-class TestRemoteStubs:
-    """
-    Test the RemoteStubs class and its methods.
-    """
-    def setup_method(self):
-        """Setup for each test method."""
-        self.repo = "example/repo"
-        self.stubs_dir = "stub/path"
-        self.supported_file_formats = (".ext1", ".ext2")
-        self.stubs = [
-            Stub(gitref=GitRef(name="main", sha="abc123")),
-            Stub(gitref=GitRef(name="dev", sha="def456")),
-            Stub(gitref=GitRef(name="other", sha="123456")),
-            Stub(gitref=GitRef(name="other2", sha="345678")),
-        ]
-        self.remotestubs = RemoteStubs(
-            repo=self.repo,
-            stubs_dir=self.stubs_dir,
-            supported_file_formats=self.supported_file_formats,
-            stubs=self.stubs,
-        )
+def test_RemoteStubs_init(mock_remotestubs, mock_plugin_config):
+    """Test initialization of RemoteStubs."""
+    remotestubs = mock_remotestubs()
+    assert remotestubs.config == mock_plugin_config
+    assert remotestubs.repo == "example/repo"
+    assert remotestubs.stubs_dir == "stub/path"
+    assert remotestubs.supported_file_formats == (".ext1", ".ext2")
+    assert remotestubs.stubs_parent_url == "parent/url"
+    assert len(remotestubs) == 4
+    assert len(remotestubs.files) == 3
 
-    def test_init(self):
-        """Test initialization of RemoteStubs."""
-        assert self.remotestubs.repo == "example/repo"
-        assert self.remotestubs.stubs_dir == "stub/path"
-        assert self.remotestubs.supported_file_formats == (".ext1", ".ext2")
-        assert len(self.remotestubs) == 4
-    
-    def test_get_graphql_query_string(self, graphql_query_string):
-        """
-        Test the _get_graphql_query_string method.
-        """
-        output = self.remotestubs._get_graphql_query_string()
-        assert output == graphql_query_string
-    
+def test_RemoteStubs_get_graphql_query_string(graphql_query_string, mock_remotestubs):
+    """
+    Test the _get_graphql_query_string method.
+    """
+    remotestubs = mock_remotestubs()
+    output = remotestubs._get_graphql_query_string()
+    assert output == graphql_query_string
 
-    @patch("include_stubs.utils.RemoteStubs._get_graphql_query_string", return_value=graphql_query_string)
-    @patch("include_stubs.utils.gh_rate_limit_reached")
-    @patch("include_stubs.utils.json.loads")
-    @patch("include_stubs.utils.get_unique_stub_fname")
-    def test_populate_remote_stub_fnames(
-        self, 
-        mock_get_unique_stub_fname,
-        mock_json_loads,
-        mock_gh_rate_limit_reached, 
-        mock_get_graphql_query_string,
-        fp
+
+@patch("include_stubs.utils.RemoteStubs._get_graphql_query_string", return_value=graphql_query_string)
+@patch("include_stubs.utils.gh_rate_limit_reached")
+@patch("include_stubs.utils.json.loads")
+@patch("include_stubs.utils.get_unique_stub_fname")
+def test_RemoteStubs_populate_remote_stub_fnames(
+    mock_get_unique_stub_fname,
+    mock_json_loads,
+    mock_gh_rate_limit_reached, 
+    mock_get_graphql_query_string,
+    fp,
+    mock_remotestubs,
+):
+    """
+    Test the populate_remote_stub_fnames method.
+    """
+    remotestubs = mock_remotestubs()
+    command = ["gh", "api", "graphql", "-f", f"query={mock_get_graphql_query_string.return_value}"]
+    fp.register(command)
+    mock_json_loads.return_value = {"data": {"repository": {
+        1: MagicMock(id=1),
+        2: None,
+        3: MagicMock(id=2),
+        4: MagicMock(id=3),
+    }}}
+    # We set the side_effect to return different values on each call.
+    # We return a valid filename on the first and last call, None on the second call.
+    mock_get_unique_stub_fname.side_effect = ["file1", None, "file2"]
+    remotestubs._populate_remote_stub_fnames()
+    mock_gh_rate_limit_reached.assert_not_called()
+    assert len(remotestubs) == 2
+    # The looping happens in reverse, so the first stub gets the last filename.
+    assert remotestubs[0].fname == "file2"
+    assert remotestubs[1].fname == "file1"
+
+@pytest.mark.parametrize(
+    "rate_limit_reached",
+    [True, False],
+    ids=["rate_limit_reached", "rate_limit_not_reached"],
+)
+@patch("include_stubs.utils.RemoteStubs._get_graphql_query_string", return_value=graphql_query_string)
+def test_RemoteStubs_populate_remote_stub_fnames_api_request_fail(mock_get_graphql_query_string, rate_limit_reached, fp, mock_remotestubs):
+    """
+    Test the _populate_remote_stub_fnames method.
+    """
+    remotestubs = mock_remotestubs()
+    command = ["gh", "api", "graphql", "-f", f"query={mock_get_graphql_query_string.return_value}"]
+    fp.register(command, returncode=1)
+    if rate_limit_reached:
+        exc_class = GitHubApiRateLimitError
+    else:
+        exc_class = ValueError
+    with (
+        patch('include_stubs.utils.gh_rate_limit_reached', return_value=rate_limit_reached),
+        pytest.raises(exc_class),
     ):
-        """
-        Test the populate_remote_stub_fnames method.
-        """
-        command = ["gh", "api", "graphql", "-f", f"query={mock_get_graphql_query_string.return_value}"]
-        fp.register(command)
-        mock_json_loads.return_value = {"data": {"repository": {
-            1: MagicMock(id=1),
-            2: None,
-            3: MagicMock(id=2),
-            4: MagicMock(id=3),
-        }}}
-        # We set the side_effect to return different values on each call.
-        # We return a valid filename on the first and last call, None on the second call.
-        mock_get_unique_stub_fname.side_effect = ["file1", None, "file2"]
-        self.remotestubs._populate_remote_stub_fnames()
-        mock_gh_rate_limit_reached.assert_not_called()
-        assert len(self.remotestubs) == 2
-        # The looping happens in reverse, so the first stub gets the last filename.
-        assert self.remotestubs[0].fname == "file2"
-        assert self.remotestubs[1].fname == "file1"
-
-    @pytest.mark.parametrize(
-        "rate_limit_reached",
-        [True, False],
-        ids=["rate_limit_reached", "rate_limit_not_reached"],
-    )
-    @patch("include_stubs.utils.RemoteStubs._get_graphql_query_string", return_value=graphql_query_string)
-    def test_populate_remote_stub_fnames_api_request_fail(self, mock_get_graphql_query_string, rate_limit_reached, fp):
-        """
-        Test the _populate_remote_stub_fnames method.
-        """
-        command = ["gh", "api", "graphql", "-f", f"query={mock_get_graphql_query_string.return_value}"]
-        fp.register(command, returncode=1)
-        if rate_limit_reached:
-            exc_class = GitHubApiRateLimitError
-        else:
-            exc_class = ValueError
-        with (
-            patch('include_stubs.utils.gh_rate_limit_reached', return_value=rate_limit_reached),
-            pytest.raises(exc_class),
-        ):
-            self.remotestubs._populate_remote_stub_fnames()
+        remotestubs._populate_remote_stub_fnames()
         
-    @patch("include_stubs.utils.requests.get")
-    def test_populate_remote_stub_contents(
-        self,
-        mock_requests_get,
-    ):
-        """
-        Test the _populate_remote_stub_contents method.
-        """
-        # Mock the requests.get method to return different contents for each call.
-        mock_requests_get.side_effect = [
-            MagicMock(text="example content", raise_for_status=MagicMock()),
-            MagicMock(text="example content 2", raise_for_status=MagicMock(side_effect=RequestException)),
-            MagicMock(text="example content 3", raise_for_status=MagicMock()),
-            MagicMock(text="example content 4", raise_for_status=MagicMock()),
-        ]
-        self.remotestubs._populate_remote_stub_contents()
-        assert len(self.remotestubs) == 3
-        # The looping happens in reverse, so the first stub gets the last content text.
-        assert self.remotestubs[0].content == "example content 4"
-        assert self.remotestubs[1].content == "example content 3"
-        assert self.remotestubs[2].content == "example content"
+@patch("include_stubs.utils.requests.get")
+def test_RemoteStubs_populate_remote_stub_contents(
+    mock_requests_get,
+    mock_remotestubs,
+):
+    """
+    Test the _populate_remote_stub_contents method.
+    """
+    remotestubs = mock_remotestubs()
+    # Mock the requests.get method to return different contents for each call.
+    mock_requests_get.side_effect = [
+        MagicMock(text="example content", raise_for_status=MagicMock()),
+        MagicMock(text="example content 2", raise_for_status=MagicMock(side_effect=RequestException)),
+        MagicMock(text="example content 3", raise_for_status=MagicMock()),
+        MagicMock(text="example content 4", raise_for_status=MagicMock()),
+    ]
+    remotestubs._populate_remote_stub_contents()
+    assert len(remotestubs) == 3
+    # The looping happens in reverse, so the first stub gets the last content text.
+    assert remotestubs[0].content == "example content 4"
+    assert remotestubs[1].content == "example content 3"
+    assert remotestubs[2].content == "example content"
     
-    @patch("include_stubs.utils.get_html_title")
-    @patch("include_stubs.utils.get_md_title")
-    def test_populate_remote_stub_titles(self, mock_get_md_title, mock_get_html_title):
-        """
-        Test the _populate_remote_stub_titles method.
-        """
-        # Set the fname for each stub.
-        fnames = ["some_name.html", "some_other_name.md", ".md", ".html"]
-        for i,_ in enumerate(self.remotestubs):
-            self.remotestubs[i].fname = fnames[i]
-        self.remotestubs._populate_remote_stub_titles()
-        assert len(self.remotestubs) == 4
-        assert self.remotestubs[0].title == mock_get_html_title.return_value
-        assert self.remotestubs[1].title == mock_get_md_title.return_value
-        assert self.remotestubs[2].title == mock_get_md_title.return_value
-        assert self.remotestubs[3].title == mock_get_html_title.return_value
-    
-    @patch("include_stubs.utils.RemoteStubs._populate_remote_stub_titles")
-    @patch("include_stubs.utils.RemoteStubs._populate_remote_stub_contents")
-    @patch("include_stubs.utils.RemoteStubs._populate_remote_stub_fnames")
-    def test_populate_remote_stubs(self, mock_populate_fnames, mock_populate_contents, mock_populate_titles):
-        """
-        Test the _populate_remote_stubs method.
-        """
-        self.remotestubs.populate_remote_stubs()
-        mock_populate_fnames.assert_called_once()
-        mock_populate_contents.assert_called_once()
-        mock_populate_titles.assert_called_once()
+@patch("include_stubs.utils.get_html_title")
+@patch("include_stubs.utils.get_md_title")
+def test_RemoteStubs_populate_remote_stub_titles(mock_get_md_title, mock_get_html_title, mock_remotestubs):
+    """
+    Test the _populate_remote_stub_titles method.
+    """
+    remotestubs = mock_remotestubs()
+    # Set the fname for each stub.
+    fnames = ["some_name.html", "some_other_name.md", ".md", ".html"]
+    for i,_ in enumerate(remotestubs):
+        remotestubs[i].fname = fnames[i]
+    remotestubs._populate_remote_stub_titles()
+    assert len(remotestubs) == 4
+    assert remotestubs[0].title == mock_get_html_title.return_value
+    assert remotestubs[1].title == mock_get_md_title.return_value
+    assert remotestubs[2].title == mock_get_md_title.return_value
+    assert remotestubs[3].title == mock_get_html_title.return_value
+
+@patch("include_stubs.utils.File.generated")
+@patch("include_stubs.utils.make_file_unique")
+def test_RemoteStubs_populate_remote_stub_files(mock_make_file_unique, mock_file_generated, mock_remotestubs):
+    """
+    Test the _populate_remote_stub_files method.
+    """
+    remotestubs = mock_remotestubs()
+    # Mock the output of the file generation for each stub
+    generated_files = [
+        MagicMock(dest_path="path/1"),
+        MagicMock(dest_path="path2"),
+        MagicMock(dest_path="3"),
+        MagicMock(dest_path="other/path"),
+    ]
+    mock_file_generated.side_effect = generated_files
+    remotestubs._populate_remote_stub_files()
+    # Make sure that the make_file_unique function was called with the correct arguments
+    assert mock_make_file_unique.call_count == 4
+    for i in range(4):
+        args, kwargs = mock_make_file_unique.call_args_list[i]
+        assert args == (generated_files[i], remotestubs.files)
+        assert kwargs == {}
+    # Make sure the number of stubs hasn't changed
+    assert len(remotestubs) == 4
+    # Make sure the generated files have been added to the RemoteStubs files list
+    assert remotestubs.files[-4:] == generated_files
+    assert remotestubs[0].file.dest_path == "parent/url/path/1"
+    assert remotestubs[1].file.dest_path == "parent/url/path2"
+    assert remotestubs[2].file.dest_path == "parent/url/3"
+    assert remotestubs[3].file.dest_path == "parent/url/other/path"
+    assert remotestubs[0].file == generated_files[0]
+    assert remotestubs[1].file == generated_files[1]
+    assert remotestubs[2].file == generated_files[2]
+    assert remotestubs[3].file == generated_files[3]
+
+def test_RemoteStubs_populate_remote_stub_pages(mock_remotestubs):
+    """
+    Test the _populate_remote_stub_pages method.
+    """
+    remotestubs = mock_remotestubs()
+    remotestubs[0].file = MagicMock(src_uri="ex_uri_1")
+    remotestubs[1].file = MagicMock(src_uri="ex_uri_2")
+    remotestubs[2].file = MagicMock(src_uri="ex_uri_3")
+    remotestubs[3].file = MagicMock(src_uri="ex_uri_4")
+    remotestubs[1].title = "example title"
+    remotestubs[2].title = "title2"
+    remotestubs._populate_remote_stub_pages()
+    # Make sure the number of stubs hasn't changed
+    assert len(remotestubs) == 4
+    for i in range(4):
+        assert remotestubs[i].page == remotestubs[i].file.page
+    assert remotestubs[0].page.title == "Ex_uri_1"
+    assert remotestubs[1].page.title == "example title"
+    assert remotestubs[2].page.title == "title2"
+    assert remotestubs[3].page.title == "Ex_uri_4"
+
+@patch("include_stubs.utils.RemoteStubs._populate_remote_stub_pages")
+@patch("include_stubs.utils.RemoteStubs._populate_remote_stub_files")
+@patch("include_stubs.utils.RemoteStubs._populate_remote_stub_titles")
+@patch("include_stubs.utils.RemoteStubs._populate_remote_stub_contents")
+@patch("include_stubs.utils.RemoteStubs._populate_remote_stub_fnames")
+def test_RemoteStubs_populate_remote_stubs(
+    mock_populate_fnames,
+    mock_populate_contents,
+    mock_populate_titles,
+    mock_populate_files,
+    mock_populate_pages,
+    mock_remotestubs,
+):
+    """
+    Test the _populate_remote_stubs method.
+    """
+    remotestubs = mock_remotestubs()
+    remotestubs.populate_remote_stubs()
+    mock_populate_fnames.assert_called_once()
+    mock_populate_contents.assert_called_once()
+    mock_populate_titles.assert_called_once()
+    mock_populate_files.assert_called_once()
+    mock_populate_pages.assert_called_once()

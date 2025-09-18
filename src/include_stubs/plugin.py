@@ -107,95 +107,62 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
     def add_stub_to_site(
         self,
         config: MkDocsConfig,
+        stub: Stub,
         stubs_dir: str,
         stubs_parent_url: str,
         files: Files,
         is_remote_stub: bool,
-        ref: Optional[GitRef] = None,
     ) -> None:
         """
         Add a stub to the site.
         If `is_remote_stub` is True, it will fetch the stub from the remote repository,
         otherwise it will fetch it from the local directory.
         """
-        # Get the stub file
-        stub = get_stub(
-            stub_dir=stubs_dir,
-            supported_file_formats=SUPPORTED_FILE_FORMATS,
-            is_remote_stub=is_remote_stub,
-            repo=self.repo,
-            gitref=ref,
-        )
-        if stub:
-            fname = stub.fname
-            if is_remote_stub:
-                #  Create the stub file
-                stub_file = File.generated(
-                    config=config,
-                    src_uri=fname,
-                    content=stub.content,
-                )
-                # Change the destination path by prepending the stubs_parent_url
-                stub_file.dest_path = os.path.join(
-                    stubs_parent_url, stub_file.dest_path
-                )
-            else:
-                use_directory_urls = config["use_directory_urls"]
-                #  Add the stub file to the site files
-                stub_file = File(
-                    path=fname,
-                    src_dir=os.path.abspath(stubs_dir),
-                    dest_dir=config["site_dir"],
-                    use_directory_urls=use_directory_urls,
-                    dest_uri=get_dest_uri_for_local_stub(
-                        fname,
-                        stubs_parent_url,
-                        use_directory_urls,
-                        SUPPORTED_FILE_FORMATS,
-                    ),
-                )
-                self.local_stub_abs_path = stub_file.abs_src_path
-            #  Make the file unique
+        fname = stub.fname
+        if not is_remote_stub:
+            use_directory_urls = config["use_directory_urls"]
+            #  Add the stub file to the site files
+            stub_file = File(
+                path=fname,
+                src_dir=os.path.abspath(stubs_dir),
+                dest_dir=config["site_dir"],
+                use_directory_urls=use_directory_urls,
+                dest_uri=get_dest_uri_for_local_stub(
+                    fname,
+                    stubs_parent_url,
+                    use_directory_urls,
+                    SUPPORTED_FILE_FORMATS,
+                ),
+            )
+            self.local_stub_abs_path = stub_file.abs_src_path
             make_file_unique(stub_file, files)
-            #  Include the stub file to the site
-            files.append(stub_file)
-            # Add the file to the stub object
-            stub.file = stub_file
-            #  Create a page for the stub file
-            stub_page = Page(
-                config=config,
-                title=stub.title or stub_file.src_uri.capitalize(),
-                file=stub_file,
-            )
-            # Add the page to the stub object
-            stub.page = stub_page
-            if is_remote_stub:
-                # Add remote stub to the cache
-                if IncludeStubsPlugin._cached_remote_stubs is None:
-                    IncludeStubsPlugin._cached_remote_stubs = []
-                IncludeStubsPlugin._cached_remote_stubs.append(stub)
-                logger.info(
-                    f"Stub {stub.fname!r} added to remote cache."
-                )
-                msg_location = f"Git ref {ref!r}"
-            else:
-                msg_location = f"{stub_file.src_dir!r}"
+        #  Include the stub file to the site
+        files.append(stub_file)
+        # Add the file to the stub object
+        stub.file = stub_file
+        #  Create a page for the stub file
+        stub_page = Page(
+            config=config,
+            title=stub.title or stub_file.src_uri.capitalize(),
+            file=stub_file,
+        )
+        # Add the page to the stub object
+        stub.page = stub_page
+        if is_remote_stub:
+            # Add remote stub to the cache
+            if IncludeStubsPlugin._cached_remote_stubs is None:
+                IncludeStubsPlugin._cached_remote_stubs = []
+            IncludeStubsPlugin._cached_remote_stubs.append(stub)
             logger.info(
-                f"Stub {stub.fname!r} found in {msg_location}. "
-                f"Added related page {stub_page.title!r} at {stub_file.dest_path!r}."
+                f"Stub {stub.fname!r} added to remote cache."
             )
+            msg_location = f"Git ref {ref!r}"
         else:
-            if is_remote_stub:
-                msg_location = (
-                    f"{stubs_dir!r} for Git ref {ref!r}. Skipping this reference."
-                )
-            else:
-                msg_location = f"the local {stubs_dir!r} directory. Skipping addition of local stub."
-            logger.warning(
-                f"No uniquely identifiable stub found in {msg_location} "
-                f"This may happen if the {stubs_dir!r} directory is missing, or if no stub files or multiple conflicting candidates "
-                "are found within it."
-            )
+            msg_location = f"{stub_file.src_dir!r}"
+        logger.info(
+            f"Stub {stub.fname!r} found in {msg_location}. "
+            f"Added related page {stub_page.title!r} at {stub_file.dest_path!r}."
+        )
 
     def on_files(self, files: Files, config: MkDocsConfig) -> Files:
         """
@@ -230,19 +197,23 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
             refs = self.get_git_refs_for_website()
             # Create the remote Stubs
             remotestubs = RemoteStubs(
+                stubs=[Stub(gitref=ref) for ref in refs],
+                config=config,
                 repo=self.repo,
                 stubs_dir=stubs_dir,
+                stubs_parent_url=stubs_parent_url,
                 supported_file_formats=SUPPORTED_FILE_FORMATS,
-                stubs=[Stub(gitref=ref) for ref in refs],
+                files=files,
             )
+            
             for stub in remotestubs:
                 self.add_stub_to_site(
                     config=config,
-                    stubs_dir=stubs_dir,
+                    stub=stub,
+                    stubs_dir=remotestubs.stubs_dir,
                     stubs_parent_url=stubs_parent_url,
                     files=files,
                     is_remote_stub=True,
-                    ref=stub.gitref,
                 )
         return files
 

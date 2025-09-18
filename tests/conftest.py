@@ -57,3 +57,21 @@ def mock_navigation(mock_section):
     navigation = MagicMock(spec=Navigation)
     navigation.items = [mock_section]
     return navigation
+
+@pytest.fixture
+def mock_plugin_config():
+    return {
+        "repo": "some_repo",
+        "main_website": {
+            "pattern": "some_pattern",
+            "ref_type": "branch",
+            "branch": "some_branch",
+        },
+        "preview_website": {
+            "pattern": "preview/*",
+            "ref_type": "tag",
+            "no_main": False,
+        },
+        "stubs_dir": "stubs_dir",
+        "stubs_parent_url": "parent/url/",
+    }
