@@ -16,8 +16,8 @@ jobs:
         run: |
           is_release_tag=true
           tag='${{ github.ref_name }}' # Always the tag name in `on: push: tags` events
-          if [[ ! "$tag" =~ '${{ env.RELEASE_TAG_REGEX }}' ]]; then
-            echo "::warning::The tag '$tag' was not recognised as a release tag, matching the regex '${{ env.RELEASE_TAG_REGEX }}'. Therefore, no release was created."
+          if [[ ! "$tag" =~ ${{ env.RELEASE_TAG_REGEX }} ]]; then # No quotes around regex on purpose otherwise it won't work
+            echo "::warning::The tag '$tag' was not recognised as a release tag, as it did not match the regex '${{ env.RELEASE_TAG_REGEX }}'. Therefore, no release was created."
             is_release_tag=false
           fi
           echo "is_release_tag=$is_release_tag" >> $GITHUB_OUTPUT
@@ -29,9 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-tags: true
+        uses: actions/checkout@v5
+
       # Don't allow smaller new versions or jumping versions in the MAJOR.MINOR.PATCH format
       - name: Version sanity check
         run: |
@@ -88,7 +87,7 @@ jobs:
       package-name: ${{ steps.get-package-name.outputs.package-name }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       
       - name: Get name
         id: get-package-name
@@ -145,7 +144,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       
       # Delete newly created tag
       - name: Cleanup tag
