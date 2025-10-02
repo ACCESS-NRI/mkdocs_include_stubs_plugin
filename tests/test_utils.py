@@ -1,50 +1,49 @@
 # fp is a fixture provided by pytest-subprocess.
 
-import logging
-from subprocess import CalledProcessError
-from unittest.mock import MagicMock, patch, mock_open
+from subprocess import CalledProcessError, SubprocessError
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 from requests import RequestException
 
-from include_configuration_stubs.config import GitRefType
-from include_configuration_stubs.plugin import SUPPORTED_FILE_FORMATS
-from include_configuration_stubs.utils import (
-    ConfigStub,
-    GitRef,
+from include_stubs.config import GitRef, GitRefType
+from include_stubs.plugin import SUPPORTED_FILE_FORMATS
+from include_stubs.utils import (
+    Stub,
+    GitHubApiRateLimitError,
     add_navigation_hierarchy,
     add_pages_to_nav,
     append_number_to_file_name,
-    check_is_installed,
-    get_config_stub,
-    get_config_stub_content,
-    get_config_stub_fname,
-    get_config_stub_title,
+    get_default_branch_from_remote_repo,
+    get_dest_uri_for_local_stub,
     get_git_refs,
     get_html_title,
     get_md_title,
     get_remote_repo_from_local_repo,
     get_repo_from_input,
     get_repo_from_url,
+    get_unique_stub_fname,
+    gh_rate_limit_reached,
     is_main_website,
-    logger,
-    make_file_unique,
-    set_stubs_nav_path,
-    get_default_branch_from_remote_repo,
-    run_command,
-    get_dest_uri_for_local_stub,
     keep_unique_refs,
+    make_file_unique,
+    print_exe_version,
+    run_command,
+    set_stubs_nav_path,
 )
 
 
-@pytest.fixture(autouse=True)
-def silence_logs():
-    logger.setLevel(logging.CRITICAL)
-
 
 @pytest.fixture
-def mock_git_refs():
-    pass
+def graphql_query_string():
+    return (
+        'query { repository(owner: "example", name: "repo") {'
+        'r_abc123: object(expression: "abc123:stub/path") { ... on Tree { entries { name type oid }}}'
+        'r_def456: object(expression: "def456:stub/path") { ... on Tree { entries { name type oid }}}'
+        'r_123456: object(expression: "123456:stub/path") { ... on Tree { entries { name type oid }}}'
+        'r_345678: object(expression: "345678:stub/path") { ... on Tree { entries { name type oid }}}'
+        "}}"
+    )
 
 
 def test_run_command(fp):
@@ -56,23 +55,28 @@ def test_run_command(fp):
     assert command in fp.calls
 
 
-def test_check_is_installed_found():
-    """Test the check_is_installed function when it passes."""
+@patch("include_stubs.utils.logger")
+def test_print_exe_version_executable_installed(mock_logger):
+    """Test the print_exe_version function when the executable is installed."""
     exe = "random_example_executable"
-    with patch("include_configuration_stubs.utils.shutil.which", return_value=True):
-        check_is_installed(exe)
+    with patch(
+        "include_stubs.utils.run_command", return_value="1.2.3"
+    ) as mock_run_command:
+        print_exe_version(exe)
+        mock_run_command.assert_called_once_with([exe, "--version"])
+        mock_logger.info.assert_called_once_with(f"'{exe}' version: 1.2.3")
 
 
-def test_check_is_installed_not_found():
-    """Test the check_is_installed function when the executable is not found."""
+def test_print_exe_version_executable_not_installed(fp):
+    """Test the print_exe_version function when the executable is installed."""
     exe = "random_example_executable"
-    with patch("shutil.which", return_value=False):
-        with pytest.raises(EnvironmentError) as excinfo:
-            check_is_installed(exe)
-            assert (
-                str(excinfo.value)
-                == f"'{exe}' is required but not found. Please install it and try again."
-            )
+    fp.register([f"{exe}", "--version"], returncode=1)
+    with pytest.raises(EnvironmentError) as excinfo:
+        print_exe_version(exe)
+        assert (
+            str(excinfo.value)
+            == f"Failed to get '{exe}' version. Please ensure it is installed correctly."
+        )
 
 
 @pytest.mark.parametrize(
@@ -90,19 +94,19 @@ def test_check_is_installed_not_found():
         (
             "sha1\trefs/heads/main\nsha2\trefs/tags/dev\nsha3\trefs/heads/example/branch1\nsha4\trefs/tags/example/tag^{}",
             [
-                GitRef(sha="sha1", name='main'),
-                GitRef(sha="sha2", name='dev'),
-                GitRef(sha="sha3", name='example/branch1'),
+                GitRef(sha="sha1", name="main"),
+                GitRef(sha="sha2", name="dev"),
+                GitRef(sha="sha3", name="example/branch1"),
             ],
-        ), # non-empty-command-output
-        ("", []), # empty-command-output
+        ),  # non-empty-command-output
+        ("", []),  # empty-command-output
     ],
     ids=["non-empty-command-output", "empty-command-output"],
 )
-@patch("include_configuration_stubs.utils.get_local_branch")
+@patch("include_stubs.utils.get_local_branch")
 def test_get_git_refs(
-    mock_get_local_branch, 
-    fp, 
+    mock_get_local_branch,
+    fp,
     ref_type,
     ref_flag,
     command_output,
@@ -111,7 +115,7 @@ def test_get_git_refs(
     """Test the get_git_refs function."""
     repo = "example/repo"
     repo_url = f"https://github.com/{repo}"
-    pattern="random-pattern"
+    pattern = "random-pattern"
     fp.register(
         ["git", "ls-remote", *ref_flag, repo_url, pattern], stdout=command_output
     )
@@ -121,315 +125,30 @@ def test_get_git_refs(
     if command_output:
         mock_get_local_branch.assert_called_once()
 
+
 @pytest.mark.parametrize(
-    "is_remote_stub, response_json, response_raise, os_listdir_output, expected_output",
+    "command_output, expected_output",
     [
-        (
-            True,
-            None,
-            True,
-            None,
-            None,
-        ),  # remote_requests_error
-        (
-            True,
-            [
-                {"name": "name_without_extensionmd"},
-                {"name": "name_without_extensionhtml"},
-                {"name": "name_with_other_extension.jpg"},
-            ],
-            False,
-            None,
-            None,
-        ),  # remote_no_extension
-        (
-            False,
-            None,
-            False,
-            [
-                "name_without_extensionmd",
-                "name_without_extensionhtml",
-                "name_with_other_extension.jpg",
-            ],
-            None,
-        ),  # local_no_extension
-        (
-            True,
-            [
-                {"name": "name_with_extension.md"},
-                {"name": "name_with_not_supported_extension.jpg"},
-            ],
-            False,
-            None,
-            "name_with_extension.md",
-        ),  # remote_multiple_files_valid
-        (
-            False,
-            None,
-            False,
-            [
-                "name_with_extension.md",
-                "name_with_not_supported_extension.jpg",
-            ],
-            "name_with_extension.md",
-        ),  # local_multiple_files_valid
-        (
-            True,
-            [
-                {"name": "name_with_extension.md"},
-                {"name": "name_with_supported_extension.html"},
-            ],
-            False,
-            None,
-            None,
-        ),  # remote_multiple_supported_files
-        (
-            False,
-            None,
-            False,
-            [
-                "name_with_extension.md",
-                "name_with_supported_extension.html",
-            ],
-            None,
-        ),  # local_multiple_supported_files
-        (
-            True,
-            [
-                {"name": "name_with_extension.md"},
-                {"name": "name_with_supported_extension.md"},
-            ],
-            False,
-            None,
-            None,
-        ),  # remote_same_supported_files
-        (
-            False,
-            None,
-            False,
-            [
-                "name_with_extension.md",
-                "name_with_supported_extension.md",
-            ],
-            None,
-        ),  # local_same_supported_files
-        (
-            True,
-            [{"name": "name_with_extension.html"}],
-            False,
-            None,
-            "name_with_extension.html",
-        ),  # remote_single_file
-        (
-            False,
-            None,
-            False,
-            ["name_with_extension.html"],
-            "name_with_extension.html",
-        ),  # local_single_file
+        ("false", False),  # rate_limit_not_reached
+        ("true", True),  # rate_limit_reached
     ],
     ids=[
-        "remote_requests_error",
-        "remote_no_extension",
-        "local_no_extension",
-        "remote_multiple_files_valid",
-        "local_multiple_files_valid",
-        "remote_multiple_supported_files",
-        "local_multiple_supported_files",
-        "remote_same_supported_files",
-        "local_same_supported_files",
-        "remote_single_file",
-        "local_single_file",
+        "rate_limit_not_reached",
+        "rate_limit_reached",
     ],
 )
-@patch("include_configuration_stubs.utils.requests.get")
-@patch("include_configuration_stubs.utils.os.listdir")
-def test_get_config_stub_fname(
-    mock_listdir, mock_requests_get, is_remote_stub, response_json, response_raise, os_listdir_output, expected_output
-):
-    """Test the get_config_stub_fname function."""
-    if is_remote_stub:
-        mock_response = MagicMock()
-        mock_response.json.return_value = response_json
-        if response_raise:
-            mock_response.raise_for_status.side_effect = RequestException
-        else:
-            mock_response.raise_for_status.side_effect = None
-        mock_requests_get.return_value = mock_response
-    else:
-        mock_listdir.return_value = os_listdir_output
-    assert (
-        get_config_stub_fname(
-            stub_dir="config/path",
-            supported_file_formats=SUPPORTED_FILE_FORMATS,
-            is_remote_stub=is_remote_stub,
-            gitsha="sha1234567",
-            repo="owner/repo",
-        )
-        == expected_output
-    )
-
-
-@pytest.mark.parametrize(
-    "is_remote_stub, response_text, response_raise, fread_output, expected_output",
-    [
-        (
-            True,
-            "example text",
-            False,
-            None,
-            "example text",
-        ),  # remote_valid
-        (
-            True,
-            "example text",
-            True,
-            None,
-            None,
-        ),  # remote_response_error
-        (
-            False,
-            None,
-            False,
-            "example text",
-            "example text",
-        ),  # local
-    ],
-    ids=[
-            "remote_valid", 
-            "remote_response_error",
-            "local",
-        ],
-)
-@patch("include_configuration_stubs.utils.requests.get")
-def test_get_config_stub_content(
-    mock_response_get, is_remote_stub, response_text, response_raise, fread_output, expected_output
-):
-    """Test the get_config_stub_content function."""
-    stub_dir="config/path"
-    fname="example_name"
-    repo="owner/repo"
-    gitsha="sha1234567"
-    if is_remote_stub:
-        mock_response = MagicMock()
-        mock_response.text = response_text
-        if response_raise:
-            mock_response.raise_for_status.side_effect = RequestException
-        else:
-            mock_response.raise_for_status.side_effect = None
-        mock_response_get.return_value = mock_response
-        assert get_config_stub_content(
-            stub_dir=stub_dir,
-            fname=fname,
-            is_remote_stub=is_remote_stub,
-            repo=repo,
-            gitsha=gitsha,
-        ) == expected_output
-    else:
-        m = mock_open(read_data=fread_output)
-        with patch("include_configuration_stubs.utils.open", m):
-            output = get_config_stub_content(
-                stub_dir=stub_dir,
-                fname=fname,
-                is_remote_stub=is_remote_stub,
-                repo=repo,
-                gitsha=gitsha,
-            ) 
-        assert output == expected_output
-        m.assert_called_once_with(f"{stub_dir}/{fname}", "r", encoding="utf-8")
-
-
-@patch(
-    "include_configuration_stubs.utils.get_html_title",
-    return_value="html",
-)
-@patch(
-    "include_configuration_stubs.utils.get_md_title",
-    return_value="md",
-)
-def test_get_config_stub_title(path, expected_output):
-    """
-    Test the get_config_stub_title function.
-    """
-    assert get_config_stub_title("some/path.html", "example_content") == "html"
-    assert get_config_stub_title("some/other/path.md", "example_content") == "md"
-
-
-@pytest.mark.parametrize(
-    "fname_output, content_output, title_output, expected_output",
-    [
-        (
-            "example_name",
-            "Example file content",
-            "Example title",
-            ConfigStub(
-                fname="example_name",
-                content="Example file content",
-                title="Example title",
-            ),
-        ),  # valid
-        (
-            None,
-            "Example file content",
-            "Example title",
-            None,
-        ),  # no_fname
-        (
-            "example_name",
-            None,
-            "Example title",
-            None,
-        ),  # no_content
-        (
-            "example_name",
-            "Example file content",
-            None,
-            ConfigStub(
-                fname="example_name",
-                content="Example file content",
-                title=None,
-            ),
-        ),  # no_title
-    ],
-    ids=[
-        "valid",
-        "no_fname",
-        "no_content",
-        "no_title",
-    ],
-)
-@pytest.mark.parametrize(
-    "is_remote_stub",
-    [True, False],
-    ids=["remote", "local"],
-)
-@patch("include_configuration_stubs.utils.get_config_stub_fname")
-@patch("include_configuration_stubs.utils.get_config_stub_content")
-@patch("include_configuration_stubs.utils.get_config_stub_title")
-def test_get_config_stub(
-    mock_get_title,
-    mock_get_content,
-    mock_get_fname,
-    fname_output,
-    content_output,
-    title_output,
-    expected_output,
-    is_remote_stub,
-):
-    """Test the get_config_stub function."""
-    mock_get_fname.return_value = fname_output
-    mock_get_content.return_value = content_output
-    mock_get_title.return_value = title_output
-    assert get_config_stub(
-        stub_dir="config/path",
-        supported_file_formats=SUPPORTED_FILE_FORMATS,
-        is_remote_stub=is_remote_stub,
-        repo="owner/repo",
-        gitsha="sha1234567",
-    ) == expected_output
-    assert mock_get_fname.call_args.kwargs.get('is_remote_stub') == is_remote_stub
-    if mock_get_content.call_args is not None:
-        assert mock_get_content.call_args.kwargs.get('is_remote_stub') == is_remote_stub
+def test_gh_rate_limit_reached(fp, command_output, expected_output):
+    """Test the gh_rate_limit_reached function."""
+    command = [
+        "gh",
+        "api",
+        "rate_limit",
+        "--jq",
+        "[.resources.[] | .remaining] | any(. == 0)",
+    ]
+    fp.register(command, stdout=command_output)
+    result = gh_rate_limit_reached()
+    assert result is expected_output
 
 
 def test_get_remote_repo(fp):
@@ -472,7 +191,7 @@ def test_get_repo_from_url(repo_url, expected_output, raises_error):
     if raises_error:
         with pytest.raises(ValueError) as excinfo:
             get_repo_from_url(repo_url)
-            # assert str(excinfo.value) == "Invalid GitHub repo URL: '{repo_url}'"
+            assert str(excinfo.value) == "Invalid GitHub repo URL: '{repo_url}'"
     else:
         output = get_repo_from_url(repo_url)
         assert output == expected_output
@@ -499,10 +218,10 @@ def test_get_repo_from_input_url_input(config_input, get_repo_from_url_output):
     """Test the get_repo_from_input function."""
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo"
+            "include_stubs.utils.get_remote_repo_from_local_repo"
         ) as mock_get_remote_repo,
         patch(
-            "include_configuration_stubs.utils.get_repo_from_url",
+            "include_stubs.utils.get_repo_from_url",
             return_value=get_repo_from_url_output,
         ) as mock_get_repo_from_url,
     ):
@@ -519,11 +238,9 @@ def test_get_repo_from_input_repo_input():
     config_input = "owner-example/repo_name"
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo"
+            "include_stubs.utils.get_remote_repo_from_local_repo"
         ) as mock_get_remote_repo,
-        patch(
-            "include_configuration_stubs.utils.get_repo_from_url"
-        ) as mock_get_repo_from_url,
+        patch("include_stubs.utils.get_repo_from_url") as mock_get_repo_from_url,
     ):
         output = get_repo_from_input(config_input)
         assert output == config_input
@@ -546,11 +263,9 @@ def test_get_repo_from_input_repo_input_invalid(config_input):
     """
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo"
+            "include_stubs.utils.get_remote_repo_from_local_repo"
         ) as mock_get_remote_repo,
-        patch(
-            "include_configuration_stubs.utils.get_repo_from_url"
-        ) as mock_get_repo_from_url,
+        patch("include_stubs.utils.get_repo_from_url") as mock_get_repo_from_url,
         pytest.raises(ValueError) as excinfo,
     ):
         get_repo_from_input(config_input)
@@ -572,11 +287,11 @@ def test_get_repo_from_input_no_input(config_input):
     get_repo_from_url_output = "example/repo"
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
+            "include_stubs.utils.get_remote_repo_from_local_repo",
             return_value=get_remote_repo_output,
         ) as mock_get_remote_repo,
         patch(
-            "include_configuration_stubs.utils.get_repo_from_url",
+            "include_stubs.utils.get_repo_from_url",
             return_value=get_repo_from_url_output,
         ) as mock_get_repo_from_url,
     ):
@@ -598,19 +313,16 @@ def test_get_repo_from_input_no_input_error(config_input):
     """
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
-            side_effect=CalledProcessError(
-                returncode=1, cmd="example", stderr="example_error"
-            ),
+            "include_stubs.utils.get_remote_repo_from_local_repo",
+            side_effect=SubprocessError(),
         ) as mock_get_remote_repo,
-        patch(
-            "include_configuration_stubs.utils.get_repo_from_url"
-        ) as mock_get_repo_from_url,
+        patch("include_stubs.utils.get_repo_from_url") as mock_get_repo_from_url,
         pytest.raises(ValueError) as excinfo,
     ):
         get_repo_from_input(config_input)
-        assert str(excinfo.value).startswith(
-            "Failed to get the GitHub repository from local directory:"
+        assert (
+            str(excinfo.value)
+            == "Cannot determine GitHub repository. No GitHub repository specified in the plugin configuration and local directory is not a git repository."
         )
         mock_get_remote_repo.assert_called()
         mock_get_repo_from_url.assert_not_called()
@@ -634,10 +346,10 @@ def test_get_repo_from_input_no_input_error(config_input):
     ],
 )
 @patch(
-    "include_configuration_stubs.utils.get_default_branch_from_remote_repo",
+    "include_stubs.utils.get_default_branch_from_remote_repo",
     return_value="default",
 )
-@patch("include_configuration_stubs.utils.get_local_branch")
+@patch("include_stubs.utils.get_local_branch")
 def test_is_main_website(
     mock_get_local_branch,
     mock_get_default_branch_from_remote_repo,
@@ -653,11 +365,11 @@ def test_is_main_website(
     mock_get_local_branch.return_value = local_branch
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
+            "include_stubs.utils.get_remote_repo_from_local_repo",
             return_value=remote_owner_name,
         ) as mock_get_remote_repo,
         patch(
-            "include_configuration_stubs.utils.get_repo_from_url",
+            "include_stubs.utils.get_repo_from_url",
             return_value=remote_owner_name,
         ) as mock_get_repo_from_url,
     ):
@@ -677,13 +389,13 @@ def test_is_main_website_get_remote_repo_exception(fp):
     fp.register(command, stdout="example_command_output")
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
+            "include_stubs.utils.get_remote_repo_from_local_repo",
             side_effect=CalledProcessError(
                 returncode=1, cmd="example", stderr="example_error"
             ),
         ) as mock_get_remote_repo,
         patch(
-            "include_configuration_stubs.utils.get_repo_from_url",
+            "include_stubs.utils.get_repo_from_url",
         ) as mock_get_repo_from_url,
     ):
         output = is_main_website(main_branch_config_input, repo)
@@ -702,10 +414,10 @@ def test_is_main_website_command_exception(fp):
     fp.register(command, stdout="example_command_output", returncode=1)
     with (
         patch(
-            "include_configuration_stubs.utils.get_remote_repo_from_local_repo",
+            "include_stubs.utils.get_remote_repo_from_local_repo",
         ) as mock_get_remote_repo,
         patch(
-            "include_configuration_stubs.utils.get_repo_from_url",
+            "include_stubs.utils.get_repo_from_url",
         ) as mock_get_repo_from_url,
     ):
         output = is_main_website(main_branch_config_input, repo)
@@ -864,14 +576,17 @@ def test_get_md_title(content, expected_output):
 @pytest.mark.parametrize(
     "path, expected_output",
     [
-        ("> Some random / Path /For/Navigation/ >>", "> Some random / Path /For/Navigation/ >>"),  # string
+        (
+            "> Some random / Path /For/Navigation/ >>",
+            "> Some random / Path /For/Navigation/ >>",
+        ),  # string
         ("", ""),  # empty
         ("    ", "    "),  # blank
         (None, "default_output"),  # none
     ],
     ids=["string", "empty", "blank", "none"],
 )
-@patch("include_configuration_stubs.utils.set_default_stubs_nav_path")
+@patch("include_stubs.utils.set_default_stubs_nav_path")
 def test_set_stubs_nav_path(mock_set_default_stubs_nav_path, path, expected_output):
     """
     Test the set_stubs_nav_path function.
@@ -958,53 +673,51 @@ def test_add_pages_to_nav_root(mock_navigation):
         assert isinstance(page.parent, MagicMock)
 
 
-@pytest.mark.parametrize(
-    "response_json, response_raise, expected_output",
-    [
-        (
-            None,
-            True,
-            None,
-        ),  # requests_error
-        (
-            {
-                "something": "example",
-                "default_branch": "default",
-                "name": "some_name",
-            },
-            False,
-            "default",
-        ),  # valid
-    ],
-    ids=[
-        "requests_error",
-        "valid",
-    ],
-)
-@patch("include_configuration_stubs.utils.requests.get")
-def test_get_default_branch_from_remote_repo(
-    mock_requests_get, response_json, response_raise, expected_output
+def test_get_default_branch_from_remote_repo_valid(
+    fp,
 ):
     """
-    Test the get_default_branch_from_remote_repo function.
+    Test the get_default_branch_from_remote_repo function when the command is successful.
     """
-    repo = "owner/repo"
-    mock_response = MagicMock()
-    mock_response.json.return_value = response_json
-    mock_requests_get.return_value = mock_response
-    if response_raise:
-        mock_response.ok = False
-        with pytest.raises(ValueError):
-            get_default_branch_from_remote_repo(repo)
-    else:
-        assert get_default_branch_from_remote_repo(repo) == expected_output
+    remote_repo = "owner/repo"
+    api_url = f"repos/{remote_repo}"
+    command = ["gh", "api", api_url, "--jq", ".default_branch"]
+    fp.register(command, stdout="default")
+    assert get_default_branch_from_remote_repo(remote_repo) == "default"
+
+
+@pytest.mark.parametrize(
+    "gh_rate_limit_reached",
+    [True, False],
+    ids=["gh_api_rate_limit_reached", "gh_api_rate_limit_not_reached"],
+)
+def test_get_default_branch_from_remote_repo_error(
+    gh_rate_limit_reached,
+    fp,
+):
+    """
+    Test the get_default_branch_from_remote_repo function when the command is not successful.
+    """
+    remote_repo = "owner/repo"
+    api_url = f"repos/{remote_repo}"
+    command = ["gh", "api", api_url, "--jq", ".default_branch"]
+    fp.register(command, returncode=1)
+    exception_class = GitHubApiRateLimitError if gh_rate_limit_reached else ValueError
+    with (
+        patch(
+            "include_stubs.utils.gh_rate_limit_reached",
+            return_value=gh_rate_limit_reached,
+        ),
+        pytest.raises(exception_class),
+    ):
+        get_default_branch_from_remote_repo(remote_repo)
 
 
 @pytest.mark.parametrize(
     "use_directory_urls, expected_output",
     [
-        (True, "parent/url/example_stub/index.html"), # use_directory_urls_true
-        (False, "parent/url/example_stub") # use_directory_urls_false
+        (True, "parent/url/example_stub/index.html"),  # use_directory_urls_true
+        (False, "parent/url/example_stub"),  # use_directory_urls_false
     ],
     ids=[
         "use_directory_urls_true",
@@ -1017,8 +730,11 @@ def test_get_dest_uri_for_local_stub(use_directory_urls, expected_output):
     """
     stub_fname = "example_stub.md"
     stubs_parent_url = "parent/url"
-    output = get_dest_uri_for_local_stub(stub_fname, stubs_parent_url, use_directory_urls, SUPPORTED_FILE_FORMATS)
+    output = get_dest_uri_for_local_stub(
+        stub_fname, stubs_parent_url, use_directory_urls, SUPPORTED_FILE_FORMATS
+    )
     assert output == expected_output
+
 
 def test_keep_unique_refs():
     """
@@ -1027,9 +743,9 @@ def test_keep_unique_refs():
     refs = [
         GitRef(sha="123", name="ref1"),
         GitRef(sha="456", name="ref2"),
-        GitRef(sha="123", name="ref4"), # duplicate
+        GitRef(sha="123", name="ref4"),  # duplicate
         GitRef(sha="231", name="ref1"),
-        GitRef(sha="456", name="ref1"), # duplicate
+        GitRef(sha="456", name="ref1"),  # duplicate
         GitRef(sha="431", name="ref1"),
     ]
     expected = [
@@ -1040,3 +756,476 @@ def test_keep_unique_refs():
     ]
     result = keep_unique_refs(refs)
     assert result == expected
+
+
+@pytest.mark.parametrize(
+    "filenames, expected_output",
+    [
+        (
+            ["f.ext1", "f.txt", "f"],
+            "f.ext1",
+        ),
+        (
+            ["f.ext", "f.txt", "f"],
+            None,
+        ),
+        (
+            ["f.ext1", "f.ext2", "f"],
+            None,
+        ),
+    ],
+    ids=[
+        "one supported file",
+        "no supported files",
+        "multiple supported files",
+    ],
+)
+def test_get_unique_stub_fname(filenames, expected_output):
+    """
+    Test the get_unique_stub_fname function.
+    """
+    supported_file_formats = (".ext1", ".ext2")
+    output = get_unique_stub_fname(filenames, supported_file_formats)
+    assert expected_output == output
+
+
+def test_StubList_init(mock_stublist, create_mock_mkdocs_config):
+    """Test StubList initialisation."""
+    mkdocs_config = create_mock_mkdocs_config(
+        site_dir="some/site/dir", 
+        use_directory_urls=True,
+    )
+    stublist = mock_stublist(config=mkdocs_config)
+    assert stublist.mkdocs_config == mkdocs_config
+    assert stublist.repo == "example/repo"
+    assert stublist.stubs_dir == "stub/path"
+    assert stublist.supported_file_formats == (".ext1", ".ext2")
+    assert stublist.stubs_parent_url == "parent/url"
+    assert len(stublist) == 5
+    assert len(stublist.files) == 3
+
+
+def test_StubList_remote_stubs(mock_stublist):
+    """Test StubList's _remote_stubs property of StubList."""
+    stublist = mock_stublist()
+    assert stublist.remote_stubs == tuple(stublist[i] for i in (0, 1, 2, 4))
+
+
+def test_StubList_local_stub(mock_stublist):
+    """Test StubList's _local_stub property of StubList."""
+    stublist = mock_stublist()
+    assert stublist.local_stub == stublist[3]
+    del stublist[3]
+    assert stublist.local_stub is None
+
+@pytest.mark.parametrize(
+    "local_stub_present",
+    [True, False],
+    ids=[
+        "with_local_stub",
+        "no_local_stub",
+    ],
+)
+def test_StubList_append_or_replace(mock_stublist, local_stub_present):
+    """Test StubList's append_or_replace method."""
+    stublist = mock_stublist()
+    old_local_stub = stublist[3]
+    new_local_stub = Stub(is_remote=False)
+    if not local_stub_present:
+        del stublist[3]
+    # Remote stub throws error
+    with pytest.raises(ValueError):
+        stublist.append_or_replace(Stub(gitref='1234'))
+    stublist.append_or_replace(new_local_stub)
+    assert old_local_stub not in stublist
+    assert new_local_stub in stublist
+    assert len(stublist) == 5
+    
+
+def test_StubList_get_graphql_query_string(graphql_query_string, mock_stublist):
+    """
+    Test StubList's _get_graphql_query_string method.
+    """
+    stublist = mock_stublist()
+    output = stublist._get_graphql_query_string()
+    assert output == graphql_query_string
+
+
+@patch(
+    "include_stubs.utils.StubList._get_graphql_query_string",
+    return_value=graphql_query_string,
+)
+@patch("include_stubs.utils.gh_rate_limit_reached")
+@patch("include_stubs.utils.json.loads")
+@patch("include_stubs.utils.get_unique_stub_fname")
+def test_StubList_populate_remote_stub_fnames(
+    mock_get_unique_stub_fname,
+    mock_json_loads,
+    mock_gh_rate_limit_reached,
+    mock_get_graphql_query_string,
+    fp,
+    mock_stublist,
+):
+    """
+    Test StubList's _populate_remote_stub_fnames method.
+    """
+    stublist = mock_stublist()
+    command = [
+        "gh",
+        "api",
+        "graphql",
+        "-f",
+        f"query={mock_get_graphql_query_string.return_value}",
+    ]
+    fp.register(command)
+    mock_json_loads.return_value = {
+        "data": {
+            "repository": {
+                "r_abc123": MagicMock(),
+                "r_def456": None,
+                "r_123456": MagicMock(),
+                "r_345678": MagicMock(),
+            }
+        }
+    }
+    # We set the side_effect to return different values on each call.
+    # We return a valid filename on the first and second call, None on the third call.
+    mock_get_unique_stub_fname.side_effect = ["file1", "file2", None]
+    stublist._populate_remote_stub_fnames()
+    mock_gh_rate_limit_reached.assert_not_called()
+    assert len(stublist) == 3  # 2 remotes and 1 local
+    assert stublist[0].fname == "file1"
+    assert stublist[0].gitref.sha == "abc123"
+    assert stublist[1].fname == "file2"
+    assert stublist[1].gitref.sha == "123456"
+
+
+@pytest.mark.parametrize(
+    "fname",
+    ["some_filename", None],
+    ids=["valid_fname", "None_fname"],
+)
+@patch("include_stubs.utils.os.listdir")
+@patch("include_stubs.utils.get_unique_stub_fname")
+def test_StubList_populate_local_stub_fname(
+    mock_get_unique_stub_fname,
+    mock_os_listdir,
+    fname,
+    mock_stublist,
+):
+    """
+    Test StubList's _populate_local_stub_fname method.
+    """
+    stublist = mock_stublist()
+    mock_get_unique_stub_fname.return_value = fname
+    stublist._populate_local_stub_fname()
+    if fname is None:
+        assert len(stublist) == 4  # only remotes
+        assert all(stub.is_remote is True for stub in stublist)
+    else:
+        assert len(stublist) == 5  # all stublist
+        stublist[3].fname = fname
+
+
+@pytest.mark.parametrize(
+    "rate_limit_reached",
+    [True, False],
+    ids=["rate_limit_reached", "rate_limit_not_reached"],
+)
+@patch(
+    "include_stubs.utils.StubList._get_graphql_query_string",
+    return_value=graphql_query_string,
+)
+def test_StubList_populate_remote_stub_fnames_api_request_fail(
+    mock_get_graphql_query_string, rate_limit_reached, fp, mock_stublist
+):
+    """
+    Test StubList's _populate_remote_stub_fnames method.
+    """
+    stublist = mock_stublist()
+    command = [
+        "gh",
+        "api",
+        "graphql",
+        "-f",
+        f"query={mock_get_graphql_query_string.return_value}",
+    ]
+    fp.register(command, returncode=1)
+    if rate_limit_reached:
+        exc_class = GitHubApiRateLimitError
+    else:
+        exc_class = ValueError
+    with (
+        patch(
+            "include_stubs.utils.gh_rate_limit_reached", return_value=rate_limit_reached
+        ),
+        pytest.raises(exc_class),
+    ):
+        stublist._populate_remote_stub_fnames()
+
+
+@patch("include_stubs.utils.requests.get")
+def test_StubList_populate_remote_stub_contents(
+    mock_requests_get,
+    mock_stublist,
+):
+    """
+    Test StubList's _populate_remote_stub_contents method.
+    """
+    stublist = mock_stublist()
+    # Mock the requests.get method to return different contents for each call.
+    mock_requests_get.side_effect = [
+        MagicMock(text="example content", raise_for_status=MagicMock()),
+        MagicMock(
+            text="example content 2",
+            raise_for_status=MagicMock(side_effect=RequestException),
+        ),
+        MagicMock(text="example content 3", raise_for_status=MagicMock()),
+        MagicMock(text="example content 4", raise_for_status=MagicMock()),
+    ]
+    stublist._populate_remote_stub_contents()
+    assert len(stublist) == 4  # 3 remotes and 1 local
+    assert stublist[0].content == "example content"
+    assert stublist[1].content == "example content 3"
+    # stublist[2] is the local stub, which should not be modified.
+    assert stublist[3].content == "example content 4"
+
+
+@pytest.mark.parametrize(
+    "local_stub_exists",
+    [True, False],
+    ids=["local_stub_exists", "no_local_stub"],
+)
+@patch("include_stubs.utils.os.path.join")
+@patch("include_stubs.utils.open")
+def test_StubList_populate_local_stub_content(
+    mock_builtin_open,
+    mock_os_path_join,
+    local_stub_exists,
+    mock_stublist,
+):
+    """
+    Test StubList's _populate_local_stub_content method.
+    """
+    stublist = mock_stublist()
+    mock_builtin_open.side_effect = mock_open(read_data="example content")
+    if not local_stub_exists:
+        del stublist[3]  # Remove the local stub if it shouldn't exist.
+    stublist._populate_local_stub_content()
+    if local_stub_exists:
+        assert stublist[3].content == "example content"
+    else:
+        mock_os_path_join.assert_not_called()
+        mock_builtin_open.assert_not_called()
+
+
+@patch("include_stubs.utils.get_html_title")
+@patch("include_stubs.utils.get_md_title")
+def test_StubList_populate_remote_stub_titles(
+    mock_get_md_title, mock_get_html_title, mock_stublist
+):
+    """
+    Test StubList's _populate_remote_stub_titles method.
+    """
+    stublist = mock_stublist()
+    # Set the fname for each remote stub.
+    fnames = iter(("some_name.html", "some_other_name.md", ".md", ".html"))
+    for i in (0, 1, 2, 4):
+        stublist[i].fname = next(fnames)
+    stublist._populate_remote_stub_titles()
+    assert len(stublist) == 5
+    assert stublist[0].title == mock_get_html_title.return_value
+    assert stublist[1].title == mock_get_md_title.return_value
+    assert stublist[2].title == mock_get_md_title.return_value
+    assert stublist[3].title is None  # local stub should not be modified
+    assert stublist[4].title == mock_get_html_title.return_value
+
+
+@pytest.mark.parametrize(
+    "fname",
+    ["some_name.html", "some_other_name.md"],
+    ids=["html_file", "md_file"],
+)
+@patch("include_stubs.utils.get_html_title")
+@patch("include_stubs.utils.get_md_title")
+def test_StubList_populate_local_stub_title(
+    mock_get_md_title, mock_get_html_title, mock_stublist, fname
+):
+    """
+    Test StubList's _populate_local_stub_title method.
+    """
+    stublist = mock_stublist()
+    # Set the fname for the local stub.
+    stublist[3].fname = fname
+    stublist._populate_local_stub_title()
+    assert len(stublist) == 5
+    if fname.endswith(".html"):
+        assert stublist[3].title == mock_get_html_title.return_value
+    else:
+        assert stublist[3].title == mock_get_md_title.return_value
+    assert [stublist[i].title for i in (0, 1, 2, 4)] == [
+        None
+    ] * 4  # remote stubs should not be modified
+
+
+@patch("include_stubs.utils.make_file_unique")
+@patch("include_stubs.utils.StubList._create_stub_file")
+def test_StubList_populate_remote_stub_files(
+    mock_create_stub_file, mock_make_file_unique, mock_stublist
+):
+    """
+    Test StubList's _populate_remote_stub_files method.
+    """
+    stublist = mock_stublist()
+    stublist._populate_remote_stub_files()
+    # Make sure that the make_file_unique function was called once for all remote stubs
+    assert mock_create_stub_file.call_count == 4
+    # Make sure the number of stubs hasn't changed
+    assert len(stublist) == 5
+    # Make sure the generated files have been added to the StubList files list
+    assert stublist.files[-4:] == [mock_create_stub_file.return_value] * 4
+    # Make sure each stub has the correct file assigned
+    for i in (0, 1, 2, 4):
+        assert stublist[i].file == mock_create_stub_file.return_value
+    assert stublist[3].file is None  # Local stub should not be modified
+
+
+@patch("include_stubs.utils.make_file_unique")
+@patch("include_stubs.utils.StubList._create_stub_file")
+def test_StubList_populate_local_stub_file(
+    mock_create_stub_file, mock_make_file_unique, mock_stublist
+):
+    """
+    Test StubList's _populate_local_stub_file method.
+    """
+    stublist = mock_stublist()
+    stublist._populate_local_stub_file()
+    # Make sure that the make_file_unique function was called once
+    mock_create_stub_file.assert_called_once()
+    # Make sure the number of stubs hasn't changed
+    assert len(stublist) == 5
+    # Make sure the generated files have been added to the StubList files list
+    assert stublist.files[-1] == mock_create_stub_file.return_value
+    # Make sure each stub has the correct file assigned
+    assert stublist[3].file == mock_create_stub_file.return_value
+    assert [stublist[i].file for i in (0, 1, 2, 4)] == [
+        None
+    ] * 4  # remote stubs should not be modified
+
+
+@patch("include_stubs.utils.File")
+@patch("include_stubs.utils.get_dest_uri_for_local_stub")
+def test_StubList_create_stub_file(
+    mock_get_dest_uri_for_local_stub, mock_File, mock_stublist
+):
+    """
+    Test StubList's _create_stub_file method.
+    """
+    stublist = mock_stublist()
+    output = stublist._create_stub_file(stublist[0])
+    assert output == mock_File.generated.return_value
+    mock_get_dest_uri_for_local_stub.assert_not_called()
+    output = stublist._create_stub_file(stublist[3])
+    assert output == mock_File.return_value
+    mock_get_dest_uri_for_local_stub.assert_called_once()
+
+
+def test_StubList_populate_remote_stub_pages(mock_stublist):
+    """
+    Test StubList's _populate_remote_stub_pages method.
+    """
+    stublist = mock_stublist()
+    # Set stubs files
+    for i in (0, 1, 2, 4):
+        stublist[i].file = MagicMock(src_uri=f"ex_uri_{i}")
+    # Set some stubs titles
+    stublist[1].title = "example title"
+    stublist[2].title = "title"
+    stublist._populate_remote_stub_pages()
+    # Make sure the number of stubs hasn't changed
+    assert len(stublist) == 5
+    assert stublist[0].page.title == "Ex_uri_0"
+    assert stublist[1].page.title == "example title"
+    assert stublist[2].page.title == "title"
+    assert stublist[3].page is None  # local stub should not be modified
+    assert stublist[4].page.title == "Ex_uri_4"
+
+
+@pytest.mark.parametrize(
+    "title",
+    ["some title", None],
+    ids=["valid_title", "title_None"],
+)
+def test_StubList_populate_local_stub_page(mock_stublist, title):
+    """
+    Test StubList's _populate_local_stub_page method.
+    """
+    stublist = mock_stublist()
+    # Set stubs file
+    stublist[3].file = MagicMock(src_uri="example_uri")
+    # Set a title
+    stublist[3].title = title
+    stublist._populate_local_stub_page()
+    # Make sure the number of stubs hasn't changed
+    assert len(stublist) == 5
+    for i in (0, 1, 2, 4):
+        assert stublist[0].page is None  # remote stubs should not be modified
+    if title is None:
+        assert stublist[3].page.title == "Example_uri"
+    else:
+        assert stublist[3].page.title == title
+
+
+@patch("include_stubs.utils.StubList._populate_remote_stub_fnames")
+@patch("include_stubs.utils.StubList._populate_remote_stub_contents")
+@patch("include_stubs.utils.StubList._populate_remote_stub_titles")
+@patch("include_stubs.utils.StubList._populate_remote_stub_files")
+@patch("include_stubs.utils.StubList._populate_remote_stub_pages")
+def test_StubList_populate_remote_stubs(
+    mock_populate_remote_pages,
+    mock_populate_remote_files,
+    mock_populate_remote_titles,
+    mock_populate_remote_contents,
+    mock_populate_remote_fnames,
+    mock_stublist,
+):
+    """
+    Test StubList's populate_remote_stubs method.
+    """
+    stublist = mock_stublist()
+    stublist.populate_remote_stubs()
+    mock_populate_remote_pages.assert_called_once()
+    mock_populate_remote_files.assert_called_once()
+    mock_populate_remote_titles.assert_called_once()
+    mock_populate_remote_contents.assert_called_once()
+    mock_populate_remote_fnames.assert_called_once()
+
+
+@patch("include_stubs.utils.StubList._populate_local_stub_fname")
+@patch("include_stubs.utils.StubList._populate_local_stub_content")
+@patch("include_stubs.utils.StubList._populate_local_stub_title")
+@patch("include_stubs.utils.StubList._populate_local_stub_file")
+@patch("include_stubs.utils.StubList._populate_local_stub_page")
+def test_StubList_populate_local_stub(
+    mock_populate_local_page,
+    mock_populate_local_file,
+    mock_populate_local_title,
+    mock_populate_local_content,
+    mock_populate_local_fname,
+    mock_stublist,
+):
+    """
+    Test StubList's populate_local_stub method.
+    """
+    stublist = mock_stublist()
+    stublist.populate_local_stub()
+    mock_populate_local_page.assert_called_once()
+    mock_populate_local_file.assert_called_once()
+    mock_populate_local_title.assert_called_once()
+    mock_populate_local_content.assert_called_once()
+    mock_populate_local_fname.assert_called_once()
+
+def test_Stub_init_raise():
+    """Test Stub initialisation."""
+    with pytest.raises(ValueError):
+        Stub(is_remote=True)

@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 import logging
 
-from include_configuration_stubs.cli import (
+from include_stubs.cli import (
     logger,
     is_default_mkdocs_to_be_run,
     run_default_mkdocs_command,
@@ -44,9 +44,9 @@ def test_run_default_mkdocs_command():
     Test the run_default_mkdocs_command function.
     """
     with (
-        patch("include_configuration_stubs.cli.cli") as mock_cli,
+        patch("include_stubs.cli.cli") as mock_cli,
         patch(
-            "include_configuration_stubs.cli.sys.argv", ["arg_0", "arg_1"]
+            "include_stubs.cli.sys.argv", ["arg_0", "arg_1"]
         ) as mock_sys_argv,
     ):
         parameters = ["arg1", "other-arg", "--option=1"]
@@ -85,7 +85,7 @@ def test_get_plugin_config_return_none(load_config_output, expected_output):
     Test the get_plugin_config function.
     """
     with patch(
-        "include_configuration_stubs.cli.load_config",
+        "include_stubs.cli.load_config",
         return_value=load_config_output,
     ):
         get_plugin_config() == expected_output
@@ -99,11 +99,11 @@ def test_get_plugin_config():
     config_mock = MagicMock(config=config_value)
     load_config_output = {
         "plugins": {
-            "include-configuration-stubs": config_mock,
+            "include-stubs": config_mock,
         }
     }
     with patch(
-        "include_configuration_stubs.cli.load_config",
+        "include_stubs.cli.load_config",
         return_value=load_config_output,
     ):
         get_plugin_config() == config_value
@@ -132,8 +132,8 @@ def test_get_plugin_config():
         "no_flag",
     ],
 )
-@patch("include_configuration_stubs.cli.get_mkdocs_yaml_path")
-@patch("include_configuration_stubs.cli.sys.argv")
+@patch("include_stubs.cli.get_mkdocs_yaml_path")
+@patch("include_stubs.cli.sys.argv")
 def test_is_default_mkdocs_to_be_run_wrong_command(
     mock_sys_argv, mock_get_mkdocs_yaml_path, command, mkdocs_exists, other_args
 ):
@@ -142,7 +142,7 @@ def test_is_default_mkdocs_to_be_run_wrong_command(
     """
     expected_output = True
     with patch(
-        "include_configuration_stubs.cli.os.path.exists", return_value=mkdocs_exists
+        "include_stubs.cli.os.path.exists", return_value=mkdocs_exists
     ):
         assert is_default_mkdocs_to_be_run(command, other_args, "some_arg") == expected_output
 
@@ -170,8 +170,8 @@ def test_is_default_mkdocs_to_be_run_wrong_command(
         "config-file_flag_equal",
     ],
 )
-@patch("include_configuration_stubs.cli.get_mkdocs_yaml_path")
-@patch("include_configuration_stubs.cli.sys.argv")
+@patch("include_stubs.cli.get_mkdocs_yaml_path")
+@patch("include_stubs.cli.sys.argv")
 def test_is_default_mkdocs_to_be_run_good_command_f_option(
     mock_sys_argv, mock_get_mkdocs_yaml_path, command, mkdocs_exists, other_args
 ):
@@ -181,7 +181,7 @@ def test_is_default_mkdocs_to_be_run_good_command_f_option(
     """
     expected_output = True
     with patch(
-        "include_configuration_stubs.cli.os.path.exists", return_value=mkdocs_exists
+        "include_stubs.cli.os.path.exists", return_value=mkdocs_exists
     ):
         assert is_default_mkdocs_to_be_run(command, other_args, "some_arg") == expected_output
 
@@ -196,8 +196,8 @@ def test_is_default_mkdocs_to_be_run_good_command_f_option(
     [True, False],
     ids=["mkdocs_exists", "mkdocs_not_exists"],
 )
-@patch("include_configuration_stubs.cli.get_mkdocs_yaml_path")
-@patch("include_configuration_stubs.cli.sys.argv")
+@patch("include_stubs.cli.get_mkdocs_yaml_path")
+@patch("include_stubs.cli.sys.argv")
 def test_is_default_mkdocs_to_be_run_good_command_no_f_option(
     mock_sys_argv, mock_get_mkdocs_yaml_path, command, mkdocs_exists
 ):
@@ -207,7 +207,7 @@ def test_is_default_mkdocs_to_be_run_good_command_no_f_option(
     """
     other_args = ["args", "--f"]
     with patch(
-        "include_configuration_stubs.cli.os.path.exists", return_value=mkdocs_exists
+        "include_stubs.cli.os.path.exists", return_value=mkdocs_exists
     ):
         assert is_default_mkdocs_to_be_run(command, other_args, "some_arg") == mkdocs_exists
 
@@ -224,8 +224,8 @@ def test_is_default_mkdocs_to_be_run_good_command_no_f_option(
     ["-f bubbi other-arg", "", "random args --hello"],
     ids=["f_option", "empty_other_args", "random_other_args"],
 )
-@patch("include_configuration_stubs.cli.get_mkdocs_yaml_path")
-@patch("include_configuration_stubs.cli.sys.argv")
+@patch("include_stubs.cli.get_mkdocs_yaml_path")
+@patch("include_stubs.cli.sys.argv")
 def test_is_default_mkdocs_to_be_run_double_dash_first_arg(
     mock_sys_argv, mock_get_mkdocs_yaml_path, command, other_args
 ):
@@ -300,8 +300,8 @@ def test_parse_args(
     Test the parse_args function.
     """
     test_args = ["entry_point"] + args.split()
-    # with patch('include_configuration_stubs.cli.sys.argv', test_args):
-    with patch("include_configuration_stubs.cli.sys.argv", test_args):
+    # with patch('include_stubs.cli.sys.argv', test_args):
+    with patch("include_stubs.cli.sys.argv", test_args):
         known_args, unknown_args = parse_args()
     assert known_args.command == expected_command
     assert known_args.repo == expected_repo
@@ -366,7 +366,7 @@ def test_get_git_clone_command(branch):
         "no_file",
     ],
 )
-@patch("include_configuration_stubs.cli.Path.rglob")
+@patch("include_stubs.cli.Path.rglob")
 def test_get_mkdocs_yaml_path(mock_rglob, rglob_output, expected_output):
     """
     Test the get_mkdocs_yaml_path function.
@@ -409,18 +409,18 @@ def test_get_mkdocs_yaml_path(mock_rglob, rglob_output, expected_output):
         "none_plugin_config",
     ],
 )
-@patch("include_configuration_stubs.cli.sys.argv")
-@patch("include_configuration_stubs.cli.parse_args")
-@patch("include_configuration_stubs.cli.get_default_mkdocs_arguments")
-@patch("include_configuration_stubs.cli.run_default_mkdocs_command")
-@patch("include_configuration_stubs.cli.is_default_mkdocs_to_be_run")
-@patch("include_configuration_stubs.cli.get_repo_from_input")
-@patch("include_configuration_stubs.cli.get_default_branch_from_remote_repo")
-@patch("include_configuration_stubs.cli.TemporaryDirectory")
-@patch("include_configuration_stubs.cli.get_git_clone_command")
-@patch("include_configuration_stubs.cli.run_command")
-@patch("include_configuration_stubs.cli.get_mkdocs_yaml_path")
-@patch("include_configuration_stubs.cli.get_plugin_config")
+@patch("include_stubs.cli.sys.argv")
+@patch("include_stubs.cli.parse_args")
+@patch("include_stubs.cli.get_default_mkdocs_arguments")
+@patch("include_stubs.cli.run_default_mkdocs_command")
+@patch("include_stubs.cli.is_default_mkdocs_to_be_run")
+@patch("include_stubs.cli.get_repo_from_input")
+@patch("include_stubs.cli.get_default_branch_from_remote_repo")
+@patch("include_stubs.cli.TemporaryDirectory")
+@patch("include_stubs.cli.get_git_clone_command")
+@patch("include_stubs.cli.run_command")
+@patch("include_stubs.cli.get_mkdocs_yaml_path")
+@patch("include_stubs.cli.get_plugin_config")
 def test_main(
     mock_get_plugin_config,
     mock_get_mkdocs_yaml_path,

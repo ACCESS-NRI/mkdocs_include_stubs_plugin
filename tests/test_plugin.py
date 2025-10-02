@@ -5,12 +5,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from include_configuration_stubs.plugin import (
+from include_stubs.plugin import (
     ENV_VARIABLE_NAME,
-    IncludeConfigurationStubsPlugin,
+    IncludeStubsPlugin,
     logger,
 )
-from include_configuration_stubs.utils import ConfigStub, GitRef
+from include_stubs.utils import GitRef, Stub
 
 
 @pytest.fixture(autouse=True)
@@ -19,49 +19,49 @@ def silence_logs():
 
 
 @pytest.fixture
-def mock_plugin_config():
-    return {
-        "repo": "some_repo",
-        "main_website": {
-            "pattern": "some_pattern",
-            "ref_type": "branch",
-            "branch": "some_branch",
-        },
-        "preview_website": {
-            "pattern": "preview/*",
-            "ref_type": "tag",
-            "no_main": False,
-        },
-        "stubs_dir": "stubs_dir",
-        "stubs_parent_url": "parent/url/",
-    }
-
-
-@pytest.fixture
 def create_plugin(mock_plugin_config):
     """Factory function to create the plugin with the prescribed configuration options."""
 
-    def _plugin(config=mock_plugin_config, **kwargs):
-        plugin = IncludeConfigurationStubsPlugin()
+    def _plugin(
+        config=mock_plugin_config,
+        repo="owner/repo",
+        stubs_nav_path="",
+        _cached_stubs=None,
+    ):
+        plugin = IncludeStubsPlugin()
+        IncludeStubsPlugin._cached_stubs = _cached_stubs
+        IncludeStubsPlugin.repo = repo
         plugin.load_config(config)
-        for key, value in kwargs.items():
-            setattr(plugin, key, value)
+        plugin.stubs_nav_path = stubs_nav_path
         return plugin
 
     return _plugin
 
 
-def test_on_config(create_plugin, create_mock_mkdocs_config):
+@pytest.mark.parametrize(
+    "repo",
+    ["some/repo", None],
+    ids=[
+        "repo_set",
+        "repo_None",
+    ],
+)
+@patch("include_stubs.plugin.get_repo_from_input")
+def test_on_config(
+    mock_get_repo,
+    create_plugin,
+    create_mock_mkdocs_config,
+    repo,
+):
     """Test the on_config method of the plugin."""
-    plugin = create_plugin()
-    with patch(
-        "include_configuration_stubs.plugin.get_repo_from_input"
-    ) as mock_get_repo:
-        output_repo = "example_output_repo"
-        mock_get_repo.return_value = output_repo
-        plugin.on_config(create_mock_mkdocs_config())
-        # Check that the repo is set correctly
-        assert plugin.repo == output_repo
+    plugin = create_plugin(repo=repo)
+    plugin.on_config(create_mock_mkdocs_config())
+    # Check that the attributes are set correctly
+    if repo is None:
+        assert plugin.repo == mock_get_repo.return_value
+    else:
+        assert plugin.repo == repo
+        mock_get_repo.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -84,18 +84,24 @@ def test_on_config(create_plugin, create_mock_mkdocs_config):
     ["non_empty", ""],
     ids=["preview_pattern_non_empty", "preview_pattern_empty"],
 )
-@patch("include_configuration_stubs.plugin.get_git_refs")
-@patch("include_configuration_stubs.plugin.is_main_website")
+@patch("include_stubs.plugin.get_git_refs")
+@patch("include_stubs.plugin.is_main_website")
 def test_get_git_refs_for_website(
-    mock_is_main, mock_get_refs, create_plugin, is_main_website_build, no_main, main_pattern, preview_pattern
+    mock_is_main,
+    mock_get_git_refs,
+    create_plugin,
+    is_main_website_build,
+    no_main,
+    main_pattern,
+    preview_pattern,
 ):
     """Test the get_git_refs_for_website method for the main website."""
-    plugin = create_plugin(repo="some_repo")
+    plugin = create_plugin()
     plugin.config["preview_website"]["no_main"] = no_main
     plugin.config["main_website"]["pattern"] = main_pattern
     plugin.config["preview_website"]["pattern"] = preview_pattern
     mock_is_main.return_value = is_main_website_build
-    mock_get_refs.return_value = [
+    mock_get_git_refs.return_value = [
         GitRef(sha="123", name="ref1"),
         GitRef(sha="456", name="ref2"),
         GitRef(sha="123", name="ref4"),
@@ -103,50 +109,70 @@ def test_get_git_refs_for_website(
     ]
     refs = plugin.get_git_refs_for_website()
     if (
-        not is_main_website_build # build is for a preview website
-        and not no_main # main website included
-        and main_pattern # non-empty main_pattern
-        and preview_pattern # non-empty preview_pattern
+        not is_main_website_build  # build is for a preview website
+        and not no_main  # main website included
+        and main_pattern  # non-empty main_pattern
+        and preview_pattern  # non-empty preview_pattern
     ):  # mock_get_refs should be called twice if the build is for a preview website, with main website included and both patterns non-empty.
-        assert mock_get_refs.call_count == 2
+        assert mock_get_git_refs.call_count == 2
         # First call for preview website
-        first_call_args = mock_get_refs.call_args_list[0]
-        assert first_call_args[0] == (plugin.repo,) #args
+        first_call_args = mock_get_git_refs.call_args_list[0]
+        assert first_call_args[0] == (plugin.repo,)  # args
         assert first_call_args[1] == {
             "pattern": plugin.config["preview_website"]["pattern"],
             "ref_type": plugin.config["preview_website"]["ref_type"],
-        } #kwargs
+        }  # kwargs
         # Second call for main website
-        second_call_args = mock_get_refs.call_args_list[1]
-        assert second_call_args[0] == (plugin.repo,) #args
+        second_call_args = mock_get_git_refs.call_args_list[1]
+        assert second_call_args[0] == (plugin.repo,)  # args
         assert second_call_args[1] == {
             "pattern": plugin.config["main_website"]["pattern"],
             "ref_type": plugin.config["main_website"]["ref_type"],
-        } #kwargs
+        }  # kwargs
     elif (
-        (is_main_website_build and main_pattern) # build for main website with non-empty main pattern
-        or (not is_main_website_build and not no_main and not preview_pattern and main_pattern) # build for preview website with main website, with empty preview pattern and non-empty main pattern
+        (
+            is_main_website_build and main_pattern
+        )  # build for main website with non-empty main pattern
+        or (
+            not is_main_website_build
+            and not no_main
+            and not preview_pattern
+            and main_pattern
+        )  # build for preview website with main website, with empty preview pattern and non-empty main pattern
     ):
-        mock_get_refs.assert_called_once_with(
+        mock_get_git_refs.assert_called_once_with(
             plugin.repo,
             pattern=plugin.config["main_website"]["pattern"],
             ref_type=plugin.config["main_website"]["ref_type"],
         )
     elif (
-        (not is_main_website_build and no_main and preview_pattern) # build for preview website without main website, with non-empty preview pattern
-        or (not is_main_website_build and not no_main and preview_pattern and not main_pattern) # build for preview website with main website, with non-empty preview pattern and empty main pattern
+        (
+            not is_main_website_build and no_main and preview_pattern
+        )  # build for preview website without main website, with non-empty preview pattern
+        or (
+            not is_main_website_build
+            and not no_main
+            and preview_pattern
+            and not main_pattern
+        )  # build for preview website with main website, with non-empty preview pattern and empty main pattern
     ):
-        mock_get_refs.assert_called_once_with(
+        mock_get_git_refs.assert_called_once_with(
             plugin.repo,
             pattern=plugin.config["preview_website"]["pattern"],
             ref_type=plugin.config["preview_website"]["ref_type"],
         )
     else:
-        mock_get_refs.assert_not_called()
+        mock_get_git_refs.assert_not_called()
     if (
-        (not main_pattern and not preview_pattern) # Main and preview patterns are empty
-        or (not main_pattern and is_main_website_build) # Main website build and main pattern is empty
-        or (not preview_pattern and not is_main_website_build and no_main) # Preview website build without main and preview pattern is empty
+        (
+            not main_pattern and not preview_pattern
+        )  # Main and preview patterns are empty
+        or (
+            not main_pattern and is_main_website_build
+        )  # Main website build and main pattern is empty
+        or (
+            not preview_pattern and not is_main_website_build and no_main
+        )  # Preview website build without main and preview pattern is empty
     ):
         assert refs == []
     else:
@@ -158,109 +184,90 @@ def test_get_git_refs_for_website(
 
 
 @pytest.mark.parametrize(
-    "config_stub_output",
-    [
-        ConfigStub(fname="key", content="value", title="title"),  # valid_config_stub
-        None,  # None_config_stub
-    ],
-    ids=[
-        "valid_config_stub",
-        "None_config_stub",
-    ],
-)
-@pytest.mark.parametrize(
-    "is_remote_stub",
-    [
-        True,  # remote
-        False,  # local
-    ],
-    ids=[
-        "remote",
-        "local",
-    ],
-)
-@patch("include_configuration_stubs.plugin.get_config_stub")
-@patch("include_configuration_stubs.plugin.get_dest_uri_for_local_stub")
-@patch("include_configuration_stubs.plugin.os.path.abspath")
-def test_add_stub_to_site(
-    mock_abspath,
-    mock_get_dest_uri_for_local_stub,
-    mock_get_config_stub,
-    config_stub_output,
-    is_remote_stub,
-    create_plugin,
-    mock_files,
-    create_mock_mkdocs_config,
-):
-    """Test the add_stub_to_site method."""
-    files = mock_files([MagicMock()])
-    plugin = create_plugin(repo="example_repo")
-    plugin.pages = [MagicMock(), MagicMock()]
-    mock_get_config_stub.return_value = config_stub_output
-    mock_get_dest_uri_for_local_stub.return_value = "dest/uri"
-    mock_mkdocs_config = create_mock_mkdocs_config(site_dir="site/dir")
-    mock_abspath.return_value = "stub/file/abs/path"
-    plugin.add_stub_to_site(
-        config=mock_mkdocs_config,
-        stubs_dir="some/dir",
-        ref=GitRef(sha="some_ref", name="some_ref_name"),
-        stubs_parent_url="parent/url",
-        files=files,
-        is_remote_stub=is_remote_stub,
-    )
-    expected_len = 1 if config_stub_output is None else 2
-    # Check that the config stubs were added to the files
-    assert len(files) == expected_len
-    # Check that the config stub page were added to the pages
-    assert len(plugin.pages) == expected_len + 1
-    if config_stub_output:
-        # Check correctness of config stubs
-        assert files[1].src_uri == config_stub_output.fname
-        assert files[1].dest_dir == "site/dir"
-        if is_remote_stub:  # Check content only for remote stubs
-            assert files[1]._content == config_stub_output.content
-        # Check correctness of pages
-        assert plugin.pages[2].file == files[1]
-        assert plugin.pages[2].title == config_stub_output.title
-        # Check that the local stub absolute path is set correctly
-        if not is_remote_stub:
-            assert plugin.local_stub_abs_path == "stub/file/abs/path/key"
-
-
-@pytest.mark.parametrize(
     "env_variable_value",
     ["1", ""],
     ids=[
-        "env_variable_set",
-        "no_env_variable",
+        "local_stub_present",
+        "local_stub_not_present",
     ],
 )
+@pytest.mark.parametrize(
+    "cached_stubs",
+    [True, False],
+    ids=[
+        "cached_stubs_set",
+        "no_cached_stubs",
+    ],
+)
+@patch("include_stubs.plugin.IncludeStubsPlugin.get_git_refs_for_website")
+@patch("include_stubs.plugin.StubList")
 def test_on_files(
+    mock_Stublist,
+    mock_get_git_refs_for_website,
+    env_variable_value,
+    cached_stubs,
     create_plugin,
     mock_files,
     create_mock_mkdocs_config,
-    env_variable_value,
     monkeypatch,
+    mock_stublist,
 ):
     """Test the on_files method."""
-    files = mock_files()
-    plugin = create_plugin(repo="example_repo")
-    plugin.get_git_refs_for_website = MagicMock(return_value={"ref1", "ref2"})
-    plugin.add_stub_to_site = MagicMock()
+    # Create a list of original files
+    original_files = mock_files([MagicMock()] * 3)
+    # Create a list of mocked files
+    files = [MagicMock()] * 4
+    # Create a mock StubList instance
+    stublist = mock_stublist(
+        stubs=[Stub(gitref=MagicMock(), file=f, page=MagicMock()) for f in files]
+    )
+    stublist[2].is_remote = False  # Make one stub a local stub
+    stublist.populate_remote_stubs = MagicMock()
+    stublist.populate_local_stub = MagicMock()
+    stublist.append_or_replace = MagicMock()
+    # Create a mock cached StubList instance
+    cached_stublist = mock_stublist(
+        stubs=[Stub(gitref=MagicMock(), file=f, page=MagicMock()) for f in files[:-1]]
+    )
+    cached_stublist[1].is_remote = False  # Make one stub a local stub
+    cached_stublist.populate_remote_stubs = MagicMock()
+    cached_stublist.populate_local_stub = MagicMock()
+    cached_stublist.append_or_replace = MagicMock()
+    # Set the ENV variable
     monkeypatch.setenv(ENV_VARIABLE_NAME, env_variable_value)
-    plugin.on_files(files, create_mock_mkdocs_config())
-    if env_variable_value:
-        assert plugin.add_stub_to_site.call_count == 3
+    # Set the return values of the mocks
+    mock_Stublist.return_value = stublist
+    mock_get_git_refs_for_website.return_value = [MagicMock()] * 2
+    # Create a mock plugin
+    plugin = create_plugin(
+        _cached_stubs=cached_stublist if cached_stubs else None,
+    )
+    # Run the on_files method
+    plugin.on_files(original_files, create_mock_mkdocs_config())
+    # Assertions
+    cached_stublist.populate_remote_stubs.assert_not_called()
+    if cached_stubs:
+        assert original_files[3:] == files[:-1]
+        stublist.populate_remote_stubs.assert_not_called()
     else:
-        assert plugin.add_stub_to_site.call_count == 2
+        assert original_files[3:] == files
+        stublist.populate_remote_stubs.assert_called_once()
+    mocked_instance = stublist if not cached_stubs else cached_stublist
+    if env_variable_value:
+        mocked_instance.append_or_replace.assert_called_once()
+        mocked_instance.populate_local_stub.assert_called_once()
+    else:
+        mocked_instance.append_or_replace.assert_not_called()
+        mocked_instance.populate_local_stub.assert_not_called()
+    assert len(original_files) == 3 + len(mocked_instance)
 
 
 @pytest.mark.parametrize(
     "stubs_nav_path",
     ["Root > Example > Path", "Root>Example>Path", "", "    "],
-    ids=["space_path","no_space_path", "empty_path", "blank_path"],
+    ids=["space_path", "no_space_path", "empty_path", "blank_path"],
 )
-@patch("include_configuration_stubs.plugin.set_stubs_nav_path")
+@patch("include_stubs.plugin.set_stubs_nav_path")
 def test_on_nav(
     mock_set_stubs_nav_path,
     mock_files,
@@ -273,14 +280,38 @@ def test_on_nav(
     mock_set_stubs_nav_path.return_value = stubs_nav_path
     # Create a mock plugin
     files = mock_files()
-    plugin = create_plugin(repo="example_repo")
-    plugin.get_git_refs_for_website = MagicMock(return_value={"ref1", "ref2"})
     pages = [
         MagicMock(title="B"),
         MagicMock(title="A"),
         MagicMock(title="C"),
     ]
-    plugin.pages = pages
+    plugin = create_plugin(
+        stubs_nav_path=stubs_nav_path,
+        _cached_stubs=[
+            Stub(
+                gitref="some_ref",
+                fname="key1",
+                content="value1",
+                title="B",
+                page=pages[0],
+            ),
+            Stub(
+                gitref="some_ref2",
+                fname="key2",
+                content="value2",
+                title="A",
+                page=pages[1],
+            ),
+            Stub(
+                gitref="some_ref3",
+                fname="key3",
+                content="value3",
+                title="C",
+                page=pages[2],
+            ),
+        ],
+    )
+    plugin.get_git_refs_for_website = MagicMock(return_value={"ref1", "ref2"})
     # Create a mock nav object
     nav = mock_navigation
     # Call the on_nav method
@@ -312,23 +343,28 @@ def test_on_nav(
 
 
 @pytest.mark.parametrize(
-    "has_local_stub_abs_path",
-    [True, False],
+    "stubs, watch_called",
+    [
+        ([Stub(is_remote=False)], True),
+        ([Stub(gitref=MagicMock())], False),
+    ],
     ids=[
-        "valid_local_path",
-        "no_local_path",
+        "valid_local_stub",
+        "no_local_stub",
     ],
 )
-def test_on_serve(create_plugin, create_mock_mkdocs_config, has_local_stub_abs_path):
+def test_on_serve(
+    create_plugin, create_mock_mkdocs_config, mock_stublist, stubs, watch_called
+):
     """Test the on_serve method."""
-    plugin = create_plugin(repo="example_repo")
-    if has_local_stub_abs_path:
-        plugin.local_stub_abs_path = "local/stub/abs/path"
+    plugin = create_plugin(_cached_stubs=mock_stublist(stubs=stubs))
+    plugin._cached_stubs[0].file = MagicMock()
+    plugin._cached_stubs[0].file.abs_src_path = "local/stub/abs/path"
     server = MagicMock()
     builder = MagicMock()
     plugin.on_serve(server, create_mock_mkdocs_config(), builder)
-    # Check that the on_serve method was called
-    if has_local_stub_abs_path:
+    # Check that the on_serve method was called with the correct arguments
+    if watch_called:
         server.watch.assert_called_once_with("local/stub/abs/path", builder)
     else:
         server.watch.assert_not_called()
