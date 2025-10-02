@@ -59,6 +59,3 @@ parentdir_prefix = "mkdocs-include-stubs-plugin-"
 pythonpath = "src"
 testpaths = ["tests/"]
 addopts = "--cov=src --cov-report=term-missing"
-
-[tool.wheel]
-universal = true
