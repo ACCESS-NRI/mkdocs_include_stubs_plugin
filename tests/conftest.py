@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 from mkdocs.structure.nav import Navigation, Section
 from mkdocs.structure.pages import Page
+from include_stubs.utils import StubList, Stub, GitRef
 
 @pytest.fixture
 def mock_files():
@@ -75,3 +76,42 @@ def mock_plugin_config():
         "stubs_dir": "stubs_dir",
         "stubs_parent_url": "parent/url/",
     }
+
+@pytest.fixture
+def mock_stublist(mock_files, create_mock_mkdocs_config):
+    """Factory function to create a StubList instance with mock parameters."""
+
+    def _remotestubs(
+        stubs = None,
+        config = None,
+        files = None,
+    ):
+        if stubs is None:
+            stubs = [
+                Stub(gitref=GitRef(name="main", sha="abc123")),
+                Stub(gitref=GitRef(name="dev", sha="def456")),
+                Stub(gitref=GitRef(name="other", sha="123456")),
+                Stub(is_remote=False),
+                Stub(gitref=GitRef(name="other2", sha="345678")),
+            ]
+        if files is None:
+            files = mock_files(
+                [
+                    MagicMock(),
+                    MagicMock(),
+                    MagicMock(),
+                ]
+            )
+        if config is None:
+            config = create_mock_mkdocs_config()
+        return StubList(
+            stubs=stubs,
+            mkdocs_config=config,
+            files=files,
+            repo="example/repo",
+            stubs_dir="stub/path",
+            stubs_parent_url="parent/url",
+            supported_file_formats=(".ext1", ".ext2"),
+        )
+
+    return _remotestubs

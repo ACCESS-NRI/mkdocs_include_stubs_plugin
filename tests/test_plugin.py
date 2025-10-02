@@ -10,7 +10,7 @@ from include_stubs.plugin import (
     IncludeStubsPlugin,
     logger,
 )
-from include_stubs.utils import Stub, GitRef
+from include_stubs.utils import GitRef, Stub
 
 
 @pytest.fixture(autouse=True)
@@ -26,10 +26,10 @@ def create_plugin(mock_plugin_config):
         config=mock_plugin_config,
         repo="owner/repo",
         stubs_nav_path="",
-        _cached_remote_stubs=None,
+        _cached_stubs=None,
     ):
         plugin = IncludeStubsPlugin()
-        IncludeStubsPlugin._cached_remote_stubs = _cached_remote_stubs
+        IncludeStubsPlugin._cached_stubs = _cached_stubs
         IncludeStubsPlugin.repo = repo
         plugin.load_config(config)
         plugin.stubs_nav_path = stubs_nav_path
@@ -184,159 +184,82 @@ def test_get_git_refs_for_website(
 
 
 @pytest.mark.parametrize(
-    "stub_output",
-    [
-        Stub(gitref="some_ref", fname="key", content="value", title="title"),  # valid_stub
-        None,  # None_stub
-    ],
-    ids=[
-        "valid_stub",
-        "None_stub",
-    ],
-)
-@pytest.mark.parametrize(
-    "is_remote_stub",
-    [
-        True,  # remote
-        False,  # local
-    ],
-    ids=[
-        "remote",
-        "local",
-    ],
-)
-@pytest.mark.parametrize(
-    "cached_remote_stubs",
-    [
-        [
-            Stub(
-                gitref="some_ref", 
-                fname="key1", 
-                content="value1", 
-                title="title1"
-            ),
-            Stub(
-                gitref="some_ref2", 
-                fname="key2", 
-                content="value2", 
-                title="title2"
-            ),
-        ], 
-        None
-    ],
-    ids=[
-        "cached_remote_stubs_set",
-        "cached_remote_stubs_None",
-    ],
-)
-@patch("include_stubs.plugin.get_stub")
-@patch("include_stubs.plugin.get_dest_uri_for_local_stub")
-@patch("include_stubs.plugin.os.path.abspath")
-def test_add_stub_to_site(
-    mock_abspath,
-    mock_get_dest_uri_for_local_stub,
-    mock_get_stub,
-    stub_output,
-    is_remote_stub,
-    cached_remote_stubs,
-    create_plugin,
-    mock_files,
-    create_mock_mkdocs_config,
-):
-    """Test the add_stub_to_site method."""
-    files = mock_files([MagicMock()])
-    plugin = create_plugin(
-        _cached_remote_stubs=cached_remote_stubs
-    )
-    mock_get_stub.return_value = stub_output
-    mock_get_dest_uri_for_local_stub.return_value = "dest/uri"
-    mock_mkdocs_config = create_mock_mkdocs_config(site_dir="site/dir")
-    mock_abspath.return_value = "stub/file/abs/path"
-    plugin.add_stub_to_site(
-        config=mock_mkdocs_config,
-        stubs_dir="some/dir",
-        ref=GitRef(sha="some_ref", name="some_ref_name"),
-        stubs_parent_url="parent/url",
-        files=files,
-        is_remote_stub=is_remote_stub,
-    )
-    expected_len = 1 if stub_output is None else 2
-    # Check that the stubs were added to the files
-    assert len(files) == expected_len
-    if stub_output:
-        # Check correctness of stubs
-        assert files[1].src_uri == stub_output.fname
-        assert files[1].dest_dir == "site/dir"
-        if is_remote_stub:  # Check content only for remote stubs
-            assert files[1]._content == stub_output.content
-            assert plugin._cached_remote_stubs[-1].file == files[-1]
-            # Check correctness of pages
-            assert plugin._cached_remote_stubs[-1].page.file == files[-1]
-            assert plugin._cached_remote_stubs[-1].page.title == stub_output.title
-        # Check that the local stub absolute path is set correctly
-        if not is_remote_stub:
-            assert plugin.local_stub_abs_path == "stub/file/abs/path/key"
-
-
-@pytest.mark.parametrize(
     "env_variable_value",
     ["1", ""],
     ids=[
-        "env_variable_set",
-        "no_env_variable",
+        "local_stub_present",
+        "local_stub_not_present",
     ],
 )
 @pytest.mark.parametrize(
-    "cached_remote_stubs",
-    [
-        [
-            Stub(
-                gitref="some_ref", 
-                fname="key1", 
-                content="value1", 
-                title="title1"
-            ),
-            Stub(
-                gitref="some_ref2", 
-                fname="key2", 
-                content="value2", 
-                title="title2"
-            ),
-        ], 
-        None
-    ],
+    "cached_stubs",
+    [True, False],
     ids=[
-        "cached_remote_stubs_set",
-        "cached_remote_stubs_None",
+        "cached_stubs_set",
+        "no_cached_stubs",
     ],
 )
 @patch("include_stubs.plugin.IncludeStubsPlugin.get_git_refs_for_website")
+@patch("include_stubs.plugin.StubList")
 def test_on_files(
+    mock_Stublist,
     mock_get_git_refs_for_website,
+    env_variable_value,
+    cached_stubs,
     create_plugin,
     mock_files,
     create_mock_mkdocs_config,
-    env_variable_value,
-    cached_remote_stubs,
     monkeypatch,
+    mock_stublist,
 ):
     """Test the on_files method."""
-    mock_get_git_refs_for_website.return_value = [MagicMock(), MagicMock()]
-    files = mock_files()
-    plugin = create_plugin(
-        _cached_remote_stubs=cached_remote_stubs,
+    # Create a list of original files
+    original_files = mock_files([MagicMock()] * 3)
+    # Create a list of mocked files
+    files = [MagicMock()] * 4
+    # Create a mock StubList instance
+    stublist = mock_stublist(
+        stubs=[Stub(gitref=MagicMock(), file=f, page=MagicMock()) for f in files]
     )
-    plugin.add_stub_to_site = MagicMock()
+    stublist[2].is_remote = False  # Make one stub a local stub
+    stublist.populate_remote_stubs = MagicMock()
+    stublist.populate_local_stub = MagicMock()
+    stublist.append_or_replace = MagicMock()
+    # Create a mock cached StubList instance
+    cached_stublist = mock_stublist(
+        stubs=[Stub(gitref=MagicMock(), file=f, page=MagicMock()) for f in files[:-1]]
+    )
+    cached_stublist[1].is_remote = False  # Make one stub a local stub
+    cached_stublist.populate_remote_stubs = MagicMock()
+    cached_stublist.populate_local_stub = MagicMock()
+    cached_stublist.append_or_replace = MagicMock()
+    # Set the ENV variable
     monkeypatch.setenv(ENV_VARIABLE_NAME, env_variable_value)
-    plugin.on_files(files, create_mock_mkdocs_config())
-    n_calls_for_env_variable = int(bool(env_variable_value))
-    n_calls_for_cached_remote_stubs = (
-        len(mock_get_git_refs_for_website.return_value) if cached_remote_stubs is None else 0
+    # Set the return values of the mocks
+    mock_Stublist.return_value = stublist
+    mock_get_git_refs_for_website.return_value = [MagicMock()] * 2
+    # Create a mock plugin
+    plugin = create_plugin(
+        _cached_stubs=cached_stublist if cached_stubs else None,
     )
-    assert (
-        plugin.add_stub_to_site.call_count
-        == n_calls_for_cached_remote_stubs + n_calls_for_env_variable
-    )
+    # Run the on_files method
+    plugin.on_files(original_files, create_mock_mkdocs_config())
+    # Assertions
+    cached_stublist.populate_remote_stubs.assert_not_called()
+    if cached_stubs:
+        assert original_files[3:] == files[:-1]
+        stublist.populate_remote_stubs.assert_not_called()
+    else:
+        assert original_files[3:] == files
+        stublist.populate_remote_stubs.assert_called_once()
+    mocked_instance = stublist if not cached_stubs else cached_stublist
+    if env_variable_value:
+        mocked_instance.append_or_replace.assert_called_once()
+        mocked_instance.populate_local_stub.assert_called_once()
+    else:
+        mocked_instance.append_or_replace.assert_not_called()
+        mocked_instance.populate_local_stub.assert_not_called()
+    assert len(original_files) == 3 + len(mocked_instance)
 
 
 @pytest.mark.parametrize(
@@ -364,7 +287,7 @@ def test_on_nav(
     ]
     plugin = create_plugin(
         stubs_nav_path=stubs_nav_path,
-        _cached_remote_stubs=[
+        _cached_stubs=[
             Stub(
                 gitref="some_ref",
                 fname="key1",
@@ -420,23 +343,28 @@ def test_on_nav(
 
 
 @pytest.mark.parametrize(
-    "has_local_stub_abs_path",
-    [True, False],
+    "stubs, watch_called",
+    [
+        ([Stub(is_remote=False)], True),
+        ([Stub(gitref=MagicMock())], False),
+    ],
     ids=[
-        "valid_local_path",
-        "no_local_path",
+        "valid_local_stub",
+        "no_local_stub",
     ],
 )
-def test_on_serve(create_plugin, create_mock_mkdocs_config, has_local_stub_abs_path):
+def test_on_serve(
+    create_plugin, create_mock_mkdocs_config, mock_stublist, stubs, watch_called
+):
     """Test the on_serve method."""
-    plugin = create_plugin()
-    if has_local_stub_abs_path:
-        plugin.local_stub_abs_path = "local/stub/abs/path"
+    plugin = create_plugin(_cached_stubs=mock_stublist(stubs=stubs))
+    plugin._cached_stubs[0].file = MagicMock()
+    plugin._cached_stubs[0].file.abs_src_path = "local/stub/abs/path"
     server = MagicMock()
     builder = MagicMock()
     plugin.on_serve(server, create_mock_mkdocs_config(), builder)
-    # Check that the on_serve method was called
-    if has_local_stub_abs_path:
+    # Check that the on_serve method was called with the correct arguments
+    if watch_called:
         server.watch.assert_called_once_with("local/stub/abs/path", builder)
     else:
         server.watch.assert_not_called()

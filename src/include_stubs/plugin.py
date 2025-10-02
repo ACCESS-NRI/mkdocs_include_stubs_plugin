@@ -1,14 +1,13 @@
 """Main plugin."""
 
 import os
-from typing import Callable, Optional
+from typing import Callable
 
 from mkdocs.config.defaults import MkDocsConfig
 from mkdocs.livereload import LiveReloadServer
 from mkdocs.plugins import BasePlugin
-from mkdocs.structure.files import File, Files
+from mkdocs.structure.files import Files
 from mkdocs.structure.nav import Navigation
-from mkdocs.structure.pages import Page
 
 from include_stubs.cli import ENV_VARIABLE_NAME
 from include_stubs.config import (
@@ -20,15 +19,12 @@ from include_stubs.logging import get_custom_logger
 from include_stubs.utils import (
     Stub,
     GitRef,
-    RemoteStubs,
+    StubList,
     add_pages_to_nav,
-    get_dest_uri_for_local_stub,
     get_git_refs,
     get_repo_from_input,
-    get_stub,
     is_main_website,
     keep_unique_refs,
-    make_file_unique,
     set_stubs_nav_path,
 )
 
@@ -36,7 +32,7 @@ logger = get_custom_logger(__name__)
         
 
 class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
-    _cached_remote_stubs: Optional[list[Stub]] = None
+    _cached_stubs: StubList = None # type: ignore[assignment]
     repo: str = None # type: ignore[assignment]
 
     def on_config(self, config: MkDocsConfig) -> MkDocsConfig:
@@ -104,122 +100,50 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
         return unique_refs
 
 
-    def add_stub_to_site(
-        self,
-        config: MkDocsConfig,
-        stub: Stub,
-        stubs_dir: str,
-        stubs_parent_url: str,
-        files: Files,
-        is_remote_stub: bool,
-    ) -> None:
-        """
-        Add a stub to the site.
-        If `is_remote_stub` is True, it will fetch the stub from the remote repository,
-        otherwise it will fetch it from the local directory.
-        """
-        fname = stub.fname
-        if not is_remote_stub:
-            use_directory_urls = config["use_directory_urls"]
-            #  Add the stub file to the site files
-            stub_file = File(
-                path=fname,
-                src_dir=os.path.abspath(stubs_dir),
-                dest_dir=config["site_dir"],
-                use_directory_urls=use_directory_urls,
-                dest_uri=get_dest_uri_for_local_stub(
-                    fname,
-                    stubs_parent_url,
-                    use_directory_urls,
-                    SUPPORTED_FILE_FORMATS,
-                ),
-            )
-            self.local_stub_abs_path = stub_file.abs_src_path
-            make_file_unique(stub_file, files)
-        #  Include the stub file to the site
-        files.append(stub_file)
-        # Add the file to the stub object
-        stub.file = stub_file
-        #  Create a page for the stub file
-        stub_page = Page(
-            config=config,
-            title=stub.title or stub_file.src_uri.capitalize(),
-            file=stub_file,
-        )
-        # Add the page to the stub object
-        stub.page = stub_page
-        if is_remote_stub:
-            # Add remote stub to the cache
-            if IncludeStubsPlugin._cached_remote_stubs is None:
-                IncludeStubsPlugin._cached_remote_stubs = []
-            IncludeStubsPlugin._cached_remote_stubs.append(stub)
-            logger.info(
-                f"Stub {stub.fname!r} added to remote cache."
-            )
-            msg_location = f"Git ref {ref!r}"
-        else:
-            msg_location = f"{stub_file.src_dir!r}"
-        logger.info(
-            f"Stub {stub.fname!r} found in {msg_location}. "
-            f"Added related page {stub_page.title!r} at {stub_file.dest_path!r}."
-        )
-
     def on_files(self, files: Files, config: MkDocsConfig) -> Files:
         """
         Dynamically add stubs to the MkDocs files list.
         """
         stubs_dir = self.config["stubs_dir"]
         logger.info(f"Looking for stubs in {stubs_dir!r}.")
-        stubs_parent_url = self.config["stubs_parent_url"]
-        # If a local stub is present, add it to the files so it's included in the site and
-        # it is updated live when using `mkdocs serve ...`
-        # Add the local stub only if a local mkdocs.yml was not found and the mkdocs.yml is
-        # taken from the remote repo
-        if os.environ.get(ENV_VARIABLE_NAME, None):
-            self.add_stub_to_site(
-                config=config,
-                stubs_dir=stubs_dir,
-                stubs_parent_url=stubs_parent_url,
-                files=files,
-                is_remote_stub=False,
-            )
-        # All other stubs are added from the GitHub remote repository:
-        # If there are cached remote files, append them to the files directly
-        if IncludeStubsPlugin._cached_remote_stubs is not None:
-            logger.info("Cached remote stubs found. Adding them to the site.")
-            for stub in IncludeStubsPlugin._cached_remote_stubs:
-                files.append(stub.file)
-        else:
-            logger.info(
-                "No cached remote stubs found. Fetching files from remote stubs."
-            )
-            # For each remote ref, add the remote stub to the site if present
+        # Remote Stubs
+        # Add stubs from the remote repository only if there are no cached stub files
+        if IncludeStubsPlugin._cached_stubs is None:
+            # Get all Git references to include in the site
             refs = self.get_git_refs_for_website()
-            # Create the remote Stubs
-            remotestubs = RemoteStubs(
-                stubs=[Stub(gitref=ref) for ref in refs],
-                config=config,
+            # Create the Stubs from the Git references
+            stubs = [Stub(gitref=ref) for ref in refs]
+            # Create the StubList
+            IncludeStubsPlugin._cached_stubs = StubList(
+                stubs=stubs,
+                mkdocs_config=config,
                 repo=self.repo,
                 stubs_dir=stubs_dir,
-                stubs_parent_url=stubs_parent_url,
+                stubs_parent_url=self.config["stubs_parent_url"],
                 supported_file_formats=SUPPORTED_FILE_FORMATS,
                 files=files,
             )
-            
-            for stub in remotestubs:
-                self.add_stub_to_site(
-                    config=config,
-                    stub=stub,
-                    stubs_dir=remotestubs.stubs_dir,
-                    stubs_parent_url=stubs_parent_url,
-                    files=files,
-                    is_remote_stub=True,
-                )
+            # Populate the stubs (fetch the data from GitHub)
+            IncludeStubsPlugin._cached_stubs.populate_remote_stubs()
+        # Local Stub
+        # If a local stub is present, add it to the files so it's included in the site
+        # Add the local stub only if a local mkdocs.yml was not found and the mkdocs.yml is
+        # taken from the remote repo (i.e., when the ENV variable from the is set in cli.py)
+        if os.environ.get(ENV_VARIABLE_NAME, None):
+            IncludeStubsPlugin._cached_stubs.append_or_replace(Stub(is_remote=False))
+            # Populate the local stub (fetch the data)
+            IncludeStubsPlugin._cached_stubs.populate_local_stub()
+        # Add files to the site
+        for stub in IncludeStubsPlugin._cached_stubs:
+            files.append(stub.file)
+            logger.info(
+                f"Added stub file {stub.file.src_uri!r} with title {stub.page.title!r} to the site."
+            )
         return files
 
     def on_nav(self, nav: Navigation, config: MkDocsConfig, files: Files) -> Navigation:
         """Hook to modify the navigation."""
-        all_pages = [stub.page for stub in IncludeStubsPlugin._cached_remote_stubs]
+        all_pages = [stub.page for stub in IncludeStubsPlugin._cached_stubs]
         sorted_pages = sorted(
             all_pages,
             key=lambda page: page.title,
@@ -234,7 +158,7 @@ class IncludeStubsPlugin(BasePlugin[ConfigScheme]):
     def on_serve(
         self, server: LiveReloadServer, config: MkDocsConfig, builder: Callable
     ) -> LiveReloadServer:
-        if hasattr(self, "local_stub_abs_path"):
-            # Add the local stub file to the live-reload server
-            server.watch(self.local_stub_abs_path, builder)  # type: ignore[arg-type]
+        if local_stub := IncludeStubsPlugin._cached_stubs.local_stub:
+            # Add the local stub file to the live-reload server so it is updated when using `mkdocs serve ...`
+            server.watch(local_stub.file.abs_src_path, builder) # type: ignore[arg-type, union-attr]
         return server

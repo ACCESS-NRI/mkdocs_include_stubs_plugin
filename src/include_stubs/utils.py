@@ -7,7 +7,7 @@ import re
 import subprocess
 import requests
 import json
-from dataclasses import dataclass
+from copy import copy
 from subprocess import SubprocessError
 from functools import partial
 from itertools import count
@@ -39,14 +39,26 @@ class GitHubApiRateLimitError(Exception):
         super().__init__(message)
 
 
-@dataclass
 class Stub:
-    gitref: GitRef
-    fname: Optional[str] = None
-    content: Optional[str] = None
-    title: Optional[str] = None
-    file: Optional[File] = None
-    page: Optional[Page] = None
+    def __init__(
+        self,
+        gitref: Optional[GitRef] = None,
+        fname: Optional[str] = None,
+        content: Optional[str] = None,
+        title: Optional[str] = None,
+        file: Optional[File] = None,
+        page: Optional[Page] = None,
+        is_remote: bool = True,
+    ) -> None:
+        self.gitref = gitref
+        self.fname = fname
+        self.content = content
+        self.title = title
+        self.file = file
+        self.page = page
+        self.is_remote = is_remote
+        if self.gitref is None and self.is_remote:
+            raise ValueError("gitref must be provided for remote stubs.")
 
 
 def run_command(command: Sequence[str]) -> str:
@@ -170,128 +182,6 @@ def gh_rate_limit_reached() -> bool:
     ]
     limit_exceeded = run_command(command)
     return limit_exceeded == "true"
-
-
-def get_stub_content(
-    stub_dir: str,
-    fname: str,
-    is_remote_stub: bool = True,
-    repo: Optional[str] = None,
-    gitsha: Optional[str] = None,
-) -> Optional[str]:
-    """
-    Get the content of the stub from the GitHub repository.
-    If is_remote_stub is False, it will get the stub content from a local file.
-
-    Args:
-        stub_dir: Str
-            Path to the directory expected to contain the stub in a supported format.
-        fname: Str
-            The name of the stub file.
-        is_remote_stub: Bool
-            If True, the function will try to fetch the stub from a remote GitHub repository.
-            If False, it will look for a local file.
-        repo: Str
-            The GitHub Repository to fetch the stub from, when is_remote_stub = True.
-            When is_remote_stub = False, this parameter is ignored.
-        ref: Str
-            The git SHA to fetch the stub from, when is_remote_stub = True.
-            When is_remote_stub = False, this parameter is ignored.
-
-    Returns:
-        Str
-            The stub content.
-    """
-    if is_remote_stub:
-        raw_url = (
-            f"https://raw.githubusercontent.com/{repo}/{gitsha}/{stub_dir}/{fname}"
-        )
-        try:
-            raw_resp = requests.get(raw_url)
-            raw_resp.raise_for_status()
-            return raw_resp.text
-        except requests.RequestException:
-            return None
-    else:
-        with open(os.path.join(stub_dir, fname), "r", encoding="utf-8") as f:
-            return f.read()
-
-
-def get_stub_title(path: str, content: str) -> Optional[str]:
-    """
-    Get the title of a HTML or MarkDown file from its path and content.
-
-    Args:
-        path: Str
-            The path to the file.
-        content: Str
-            The content of the file.
-
-    Returns:
-        Str
-            The title of the file.
-            Returns None if no title is found.
-    """
-    if path.endswith(".html"):  # html
-        return get_html_title(content)
-    else:  # markdown
-        return get_md_title(content)
-
-
-def get_stub(
-    stub_dir: str,
-    supported_file_formats: tuple[str, ...],
-    is_remote_stub: bool = True,
-    repo: Optional[str] = None,
-    gitref: Optional[GitRef] = None,
-) -> Optional[Stub]:
-    """
-    Get the stub information and return a Stub object.
-
-    Args:
-        stub_dir: Str
-            Path to the directory expected to contain the stub in a supported format.
-        supported_file_formats: Tuple of Str
-            Tuple of supported file formats.
-        is_remote_stub: Bool
-            If True, the function will try to fetch the stub from a remote GitHub repository.
-            If False, it will look for a local file.
-        repo: Str
-            The GitHub Repository to fetch the stub from, when is_remote_stub = True.
-            When is_remote_stub = False, this parameter is ignored.
-        ref: Str
-            The git SHA to fetch the stub from, when is_remote_stub = True.
-            When is_remote_stub = False, this parameter is ignored.
-
-    Returns:
-        Stub
-            The Stub object.
-    """
-    # Get git SHA
-    gitsha = gitref.sha if gitref else None
-    # Get stub filename
-    stub_name = get_stub_fname(
-        stub_dir=stub_dir,
-        supported_file_formats=supported_file_formats,
-        is_remote_stub=is_remote_stub,
-        repo=repo,
-        gitsha=gitsha,
-    )
-    if stub_name is None:
-        return None
-    # Get stub content
-    stub_content = get_stub_content(
-        stub_dir=stub_dir,
-        fname=stub_name,
-        is_remote_stub=is_remote_stub,
-        repo=repo,
-        gitsha=gitsha,
-    )
-    if stub_content is None:
-        return None
-    # # Get stub title
-    title = get_stub_title(stub_name, stub_content)
-    return Stub(gitref=gitsha, fname=stub_name, content=stub_content, title=title)
 
 
 def get_remote_repo_from_local_repo() -> str:
@@ -683,61 +573,6 @@ def keep_unique_refs(refs: list[GitRef]) -> list[GitRef]:
     return unique_refs
 
 
-def get_stub_fname(
-    stub_dir: str,
-    supported_file_formats: tuple[str, ...],
-    is_remote_stub: bool = True,
-    repo: Optional[str] = None,
-    gitsha: Optional[str] = None,
-) -> Optional[str]:
-    """
-    Get the name of the stub file from the GitHub repository.
-    If is_remote_stub is False, it will get the stub name from a local file.
-    If the specified stub_dir contains exactly one file in a supported format, return the stub name.
-
-    Args:
-        stub_dir: Str
-            Path to the directory expected to contain the stub in a supported format.
-        supported_file_formats: Tuple of Str
-            Tuple of supported file formats.
-        is_remote_stub: Bool
-            If True, the function will try to fetch the stub from a remote GitHub repository.
-            If False, it will look for a local file.
-        repo: Str
-            The GitHub Repository to fetch the stub from, when is_remote_stub = True.
-            When is_remote_stub = False, this parameter is ignored.
-        ref: Str
-            The git SHA to fetch the stub from, when is_remote_stub = True.
-            When is_remote_stub = False, this parameter is ignored.
-
-    Returns:
-        Str
-            The stub filename.
-    """
-    if is_remote_stub:
-        api_url = f"repos/{repo}/contents/{stub_dir}?ref={gitsha}"
-        try:
-            command = ["gh", "api", api_url, "--jq", ".[] | .name"]
-            output = run_command(command)
-        except SubprocessError:
-            if gh_rate_limit_reached():
-                raise GitHubApiRateLimitError()
-            else:
-                return None
-        files = output.split("\n") if output else []
-    else:
-        files = os.listdir(stub_dir)
-    stubs = [
-        file
-        for file in files
-        for suffix in supported_file_formats
-        if file.endswith(suffix)
-    ]
-    if len(stubs) != 1:
-        return None
-    return stubs[0]
-
-
 def get_unique_stub_fname(
     filenames: Iterable[str],
     supported_file_formats: tuple[str, ...],
@@ -766,11 +601,15 @@ def get_unique_stub_fname(
     return fname[0]
 
 
-class RemoteStubs(list):
+class StubList(list):
+    """
+    A list of Stub objects with methods to populate their attributes. 
+    Once the Stub objects are populated, the Stub objects get frozen turning into a tuple rather than a list.
+    """
     def __init__(
         self,
         stubs: list[Stub],
-        config: MkDocsConfig,
+        mkdocs_config: MkDocsConfig,
         repo: str,
         stubs_dir: str,
         stubs_parent_url: str,
@@ -778,12 +617,52 @@ class RemoteStubs(list):
         files: Files,
     ):
         super().__init__(stubs)
-        self.config = config
+        self.mkdocs_config = mkdocs_config
         self.repo = repo
         self.stubs_dir = stubs_dir
         self.supported_file_formats = supported_file_formats
         self.stubs_parent_url = stubs_parent_url
-        self.files = files
+        self.files = copy(files) # Make a copy of the files to avoid modifying the original instance
+    
+    @property
+    def remote_stubs(self) -> tuple:
+        """
+        Return an iterable of remote stubs.
+
+        Returns:
+            Iterable of Stub
+                The iterable of remote stubs.
+        """
+        return tuple(stub for stub in self if stub.is_remote)
+    
+    @property
+    def local_stub(self) -> Optional[Stub]:
+        """
+        Returns the local stub if present, otherwise None.
+
+        Returns:
+            Stub or None
+                The local stub if present, otherwise None.
+        """
+        return next((stub for stub in self if not stub.is_remote), None)
+
+    def append_or_replace(self, stub: Stub) -> None:
+        """
+        Append a local Stub to self, or replace it if a local Stub is already present.
+        
+        Args:
+            stub: Stub
+                The local Stub to append or replace.
+
+        Returns:
+            None
+                It modifies self in place.
+        """
+        if stub.is_remote:
+            raise ValueError("Only local stubs can be appended or replaced.")
+        if local_stub := self.local_stub:
+            self.remove(local_stub)
+        self.append(stub)
 
     def _get_graphql_query_string(
         self,
@@ -801,11 +680,11 @@ class RemoteStubs(list):
         query_parts = [
             f'query {{ repository(owner: "{repo_owner}", name: "{repo_name}") {{',
         ]
-        for i, stub in enumerate(self):
+        for stub in self.remote_stubs:
             gitsha = stub.gitref.sha
-            # For simplicity, we alias each query with a unique 'r<index>' name based on the stub index
+            # For simplicity, we alias each query with a unique 'r_<sha>' name based on the stub index
             query_parts.append(
-                f'r{i}: object(expression: "{gitsha}:{self.stubs_dir}") {{ ... on Tree {{ entries {{ name type oid }}}}}}'
+                f'r_{gitsha}: object(expression: "{gitsha}:{self.stubs_dir}") {{ ... on Tree {{ entries {{ name type oid }}}}}}'
             )
         query_parts.append("}}")
         return "".join(query_parts)
@@ -815,13 +694,13 @@ class RemoteStubs(list):
     ) -> None:
         """
         Uses GitHub GraphQL API to get the name of the remote stub file from its git ref, for each
-        Stub in self.stubs.
+        remote Stub in self.
         If exactly one file in a supported format is found, it sets the fname attribute of the
-        corresponding Stub. Otherwise, it removes the Stub from self.stubs.
+        corresponding Stub. Otherwise, it removes the Stub from self.
 
         Returns:
             None
-                It modifies self.stubs in place.
+                It modifies self in place.
         """
         query_string = self._get_graphql_query_string()
         try:
@@ -837,9 +716,9 @@ class RemoteStubs(list):
                 )
         # For each ref, inspect the response and set the fname attribute if exactly one file in
         # the supported file format is found
-        refcontents = list(json.loads(output)["data"]["repository"].values())
-        for i in range(len(self) - 1, -1, -1):  # iterate backwards to allow deletion
-            content = refcontents[i]
+        refcontents = json.loads(output)["data"]["repository"]
+        for remotestub in self.remote_stubs:
+            content = refcontents[f'r_{remotestub.gitref.sha}']
             if (
                 content is not None
                 and (
@@ -851,105 +730,238 @@ class RemoteStubs(list):
                 is not None
             ):
                 # If a unique file name is found, set it as the Stub fname attribute
-                self[i].fname = fname
+                remotestub.fname = fname
             else:
                 # Otherwise, remove the Stub from the items
                 logger.warning(
                     f"No uniquely identifiable stub found in {self.stubs_dir!r} for git reference "
-                    f"{self[i].gitref!r}. Skipping this git reference."
+                    f"{remotestub.gitref!r}. Skipping this git reference."
                     f"This may happen if the {self.stubs_dir!r} directory is missing, or if no stub files "
                     "or multiple conflicting candidate stub files are found within it."
                 )
-                del self[i]
+                self.remove(remotestub)
+    
+    def _populate_local_stub_fname(
+        self,
+    ) -> None:
+        """
+        Get the file name of the local stub.
+        If exactly one file in a supported format is found, it sets the fname attribute of the local Stub. 
+        Otherwise, it removes the Stub from self.
+
+        Returns:
+            None
+                It modifies self in place.
+        """
+        if (localstub := self.local_stub): # pragma: no branch
+            files = os.listdir(self.stubs_dir)
+            fname = get_unique_stub_fname(files, self.supported_file_formats)
+            if fname is not None:
+                localstub.fname = fname
+            else:
+                logger.warning(
+                    f"No uniquely identifiable local stub found in {self.stubs_dir!r}. "
+                    f"Skipping the local stub."
+                    f"This may happen if the {self.stubs_dir!r} directory is missing, or if no stub files "
+                    "or multiple conflicting candidate stub files are found within it."
+                )
+                self.remove(localstub)
 
     def _populate_remote_stub_contents(
         self,
     ) -> None:
         """
-        Get the content of each Stub in self.stubs from the GitHub repository.
+        Get the content of each remote Stub in self from the GitHub repository.
 
         Returns:
             None
-                It modifies self.stubs in place.
+                It modifies self in place.
         """
-        for i in range(len(self) - 1, -1, -1):  # iterate backwards to allow deletion
-            raw_url = f"https://raw.githubusercontent.com/{self.repo}/{self[i].gitref.sha}/{self.stubs_dir}/{self[i].fname}"
+        for remotestub in self.remote_stubs:
+            raw_url = f"https://raw.githubusercontent.com/{self.repo}/{remotestub.gitref.sha}/{self.stubs_dir}/{remotestub.fname}"
             try:
                 raw_resp = requests.get(raw_url)
                 raw_resp.raise_for_status()
-                # If a content is found, set it as the Stub content attribute
-                self[i].content = raw_resp.text
             except requests.RequestException:
                 # Otherwise, remove the Stub from the items
-                del self[i]
+                self.remove(remotestub)
+            else:
+                # If a content is found, set it as the Stub content attribute
+                remotestub.content = raw_resp.text
+    
+    def _populate_local_stub_content(
+        self,
+    ) -> None:
+        """
+        Get the content of the local Stub in self.
+
+        Returns:
+            None
+                It modifies self in place.
+        """
+        if (localstub := self.local_stub):
+            with open(os.path.join(self.stubs_dir, localstub.fname), "r", encoding="utf-8") as f: # type: ignore[arg-type]
+                content = f.read()
+            localstub.content = content
 
     def _populate_remote_stub_titles(
         self,
     ) -> None:
         """
-        Get the title of each Stub in self.stubs from their contents.
+        Get the title of each remote Stub in self from their contents.
 
         Returns:
             None
-                It modifies self.stubs in place.
+                It modifies self in place.
         """
-        for i, stub in enumerate(self):
-            if stub.fname.endswith(".html"):  # html
-                self[i].title = get_html_title(stub.content)
+        for remotestub in self.remote_stubs:
+            if remotestub.fname.endswith(".html"):  # html
+                remotestub.title = get_html_title(remotestub.content)
             else:  # markdown
-                self[i].title = get_md_title(stub.content)
+                remotestub.title = get_md_title(remotestub.content)
+    
+    def _populate_local_stub_title(
+        self,
+    ) -> None:
+        """
+        Get the title of the local Stub in self from its contents.
+
+        Returns:
+            None
+                It modifies self in place.
+        """
+        if (localstub := self.local_stub): # pragma: no branch
+            if localstub.fname.endswith(".html"):  # type: ignore[union-attr]
+                localstub.title = get_html_title(localstub.content) # type: ignore[arg-type]
+            else:
+                localstub.title = get_md_title(localstub.content) # type: ignore[arg-type]
+
+    def _create_stub_file(self, stub: Stub) -> File:
+        """
+        Create a MkDocs File for the stub.
+
+        Returns:
+            mkdocs.structure.files.File
+                The MkDocs File for the stub.
+        """
+
+        if stub.is_remote:
+            stub_file = File.generated(
+                config=self.mkdocs_config,
+                src_uri=stub.fname, # type: ignore[arg-type]
+                content=stub.content, # type: ignore[arg-type]
+            )
+            stub_file.dest_path = os.path.join(self.stubs_parent_url, stub_file.dest_path)
+        else:
+            use_directory_urls = self.mkdocs_config["use_directory_urls"]
+            stub_file = File(
+                path=stub.fname, # type: ignore[arg-type]
+                src_dir=os.path.abspath(self.stubs_dir),
+                dest_dir=self.mkdocs_config["site_dir"],
+                use_directory_urls=use_directory_urls,
+                dest_uri=get_dest_uri_for_local_stub(
+                    stub.fname, # type: ignore[arg-type]
+                    self.stubs_parent_url,
+                    use_directory_urls,
+                    self.supported_file_formats,
+                ),
+            )
+        return stub_file
 
     def _populate_remote_stub_files(self) -> None:
         """
-        For each Stub in self.stubs, generate the site File.
+        For each remote Stub in self, generate the site File.
 
         Returns:
             None
-                It modifies self.stubs in place.
+                It modifies self in place.
         """
-        for i,stub in enumerate(self):
+        for remotestub in self.remote_stubs:
             #  Create the stub file
-            stub_file = File.generated(
-                config=self.config,
-                src_uri=stub.fname,
-                content=stub.content,
-            )
-            # Change the destination path by prepending the stubs_parent_url
-            stub_file.dest_path = os.path.join(self.stubs_parent_url, stub_file.dest_path)
+            stub_file = self._create_stub_file(remotestub)
             #  Make the file unique
             make_file_unique(stub_file, self.files)
+            #  Add stub_file to the list of files
             self.files.append(stub_file)
-            self[i].file = stub_file
+            remotestub.file = stub_file
+    
+    def _populate_local_stub_file(self) -> None:
+        """
+        For the local Stub in self, generate the site File.
+
+        Returns:
+            None
+                It modifies self in place.
+        """
+        if (localstub := self.local_stub): # pragma: no branch
+            #  Create the stub file
+            stub_file = self._create_stub_file(localstub)
+            #  Make the file unique
+            make_file_unique(stub_file, self.files)
+            #  Add stub_file to the list of files
+            self.files.append(stub_file)
+            localstub.file = stub_file
     
     def _populate_remote_stub_pages(self) -> None:
         """
-        For each Stub in self.stubs, generate the site Page.
+        For each remote Stub in self, generate the site Page.
 
         Returns:
             None
-                It modifies self.stubs in place.
+                It modifies self in place.
         """
-        for i,stub in enumerate(self):
+        for remotestub in self.remote_stubs:
             stub_page = Page(
-                config=self.config,
-                title=stub.title or stub.file.src_uri.capitalize(),
-                file=stub.file,
+                config=self.mkdocs_config,
+                title=remotestub.title or remotestub.file.src_uri.capitalize(),
+                file=remotestub.file,
             )
-            self[i].page = stub_page
+            remotestub.page = stub_page
+    
+    def _populate_local_stub_page(self) -> None:
+        """
+        For the local Stub in self, generate the site Page.
+
+        Returns:
+            None
+                It modifies self in place.
+        """
+        if (localstub := self.local_stub): # pragma: no branch
+            stub_page = Page(
+                config=self.mkdocs_config,
+                title=localstub.title or localstub.file.src_uri.capitalize(), # type: ignore[union-attr]
+                file=localstub.file, # type: ignore[arg-type]
+            )
+            localstub.page = stub_page
     
     def populate_remote_stubs(
         self,
     ) -> None:
         """
-        Populate the fname, content and title attributes of each Stub in self.stubs
-        by fetching the data from the GitHub repository.
+        Populate the fname, content and title attributes of each remote Stub in self.
 
         Returns:
             None
-                It modifies self.stubs in place.
+                It modifies self in place.
         """
         self._populate_remote_stub_fnames()
         self._populate_remote_stub_contents()
         self._populate_remote_stub_titles()
         self._populate_remote_stub_files()
         self._populate_remote_stub_pages()
+    
+    def populate_local_stub(
+        self,
+    ) -> None:
+        """
+        Populate the fname, content and title attributes of the local Stub in self.
+
+        Returns:
+            None
+                It modifies self in place.
+        """
+        self._populate_local_stub_fname()
+        self._populate_local_stub_content()
+        self._populate_local_stub_title()
+        self._populate_local_stub_file()
+        self._populate_local_stub_page()
