@@ -13,6 +13,7 @@ dependencies = [
     "mkdocs>=1.6",
     "termcolor>=3.0",
     "versioneer>=0.28",
+    "requests>=2.31.0",
 ]
 
 [project.optional-dependencies]
