@@ -72,12 +72,14 @@ def get_default_mkdocs_arguments(command: str, other_args: list) -> list:
     """
     return [command] + other_args if command else other_args
 
-def run_default_mkdocs_command(parameters) -> None:
+def run_default_mkdocs_command(parameters: list[str]) -> None:
     """
     Run the default mkdocs command.
     """
     # Change sys.argv to simulate mkdocs passed in the command line
     sys.argv[0] = "mkdocs"
+    new_args = " ".join(parameters)
+    logger.info(f"Running the command 'mkdocs {new_args}' using the default mkdocs executable.")
     cli(parameters)
 
 
@@ -191,19 +193,17 @@ def main():
     # with the same arguments passed to this script (without this first '--' argument)
     if sys.argv[1] == "--":
         logger.info(
-            "'--' passed as the first argument. Running the default mkdocs command")
+            "'--' passed as the first argument.")
         run_default_mkdocs_command(sys.argv[2:])
     else:
         # Parse command-line arguments
         known_args, unknown_args = parse_args()
         command = known_args.command
         default_mkdocs_arguments = get_default_mkdocs_arguments(command, unknown_args)
-        default_mkdocs_arguments_list = " ".join(default_mkdocs_arguments)
         for exe in REQUIRED_EXES:
             print_exe_version(exe)
         if is_default_mkdocs_to_be_run(command, unknown_args):
             # Run the default mkdocs command with the same arguments passed to this script
-            logger.info(f"Running the command 'mkdocs {default_mkdocs_arguments_list}' using the default mkdocs executable.")
             run_default_mkdocs_command(default_mkdocs_arguments)
         else:
             # Shallow clone the repository branch
@@ -226,10 +226,7 @@ def main():
                 plugin_config = get_plugin_config(mkdocs_yaml_path)
                 # If the plugin configuration is not found, run the default mkdocs command
                 if not plugin_config:
-                    logger.warning(
-                        "The 'include-stubs' plugin is not included in the 'mkdocs.yml' config file. "
-                        f"Falling back to the default mkdocs command: 'mkdocs {default_mkdocs_arguments_list}'."
-                    )
+                    logger.warning("The 'include-stubs' plugin is not included in the 'mkdocs.yml' config file.")
                     run_default_mkdocs_command(default_mkdocs_arguments)
                 else:
                     # Run the default mkdocs command with the mkdocs config and contents from
