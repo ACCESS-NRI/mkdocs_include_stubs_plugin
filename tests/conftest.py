@@ -3,7 +3,36 @@ from unittest.mock import MagicMock
 import pytest
 from mkdocs.structure.nav import Navigation, Section
 from mkdocs.structure.pages import Page
-from include_stubs.utils import StubList, Stub, GitRef
+from include_stubs.utils import StubList, Stub, GitRef, run_command
+from warnings import warn
+from subprocess import SubprocessError
+
+def get_used_gh_api_requests():
+    """Get the number of used GitHub API requests from the environment variable."""
+    command = ["gh", "api", "rate_limit", "--jq", ".resources | map_values(del(.reset))"]
+    try:
+        gh_used_requests = run_command(command)
+    except SubprocessError:
+        warn(
+            "Could not get GitHub API requests used from 'gh' command. \
+            Skipping testing that the test suites doesn't make calls to the GitHub API."
+        )
+    else:
+        return gh_used_requests
+
+# before any tests run check the number of used GitHub API requests
+def pytest_sessionstart(session):
+    session.config._used_gh_api_requests = get_used_gh_api_requests()
+
+def pytest_sessionfinish(session, exitstatus):
+    if (old_used_requests := session.config._used_gh_api_requests) is not None:
+        new_used_requests = get_used_gh_api_requests()
+        new_used_requests = get_used_gh_api_requests()
+        # assert old_used_requests == new_used_requests, (
+        #     "The number of used GitHub API requests changed during tests.\n",
+        #     f"Before: {old_used_requests}, After: {new_used_requests}",
+        # )
+        assert old_used_requests is False, f"The number of used GitHub API requests changed during tests.\nOutputs of the command `gh api rate_limit` before and after running the tests:\nBefore: {old_used_requests}\nAfter: {new_used_requests}\n"
 
 @pytest.fixture
 def mock_files():
