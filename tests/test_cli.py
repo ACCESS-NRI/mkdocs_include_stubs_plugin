@@ -421,7 +421,9 @@ def test_get_mkdocs_yaml_path(mock_rglob, rglob_output, expected_output):
 @patch("include_stubs.cli.run_command")
 @patch("include_stubs.cli.get_mkdocs_yaml_path")
 @patch("include_stubs.cli.get_plugin_config")
+@patch("include_stubs.cli.print_exe_version")
 def test_main(
+    mock_print_exe_version,
     mock_get_plugin_config,
     mock_get_mkdocs_yaml_path,
     mock_run_command,

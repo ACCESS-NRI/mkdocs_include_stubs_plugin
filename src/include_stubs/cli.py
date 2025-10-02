@@ -8,12 +8,13 @@ from tempfile import TemporaryDirectory
 from mkdocs.config.base import load_config
 from mkdocs.__main__ import cli
 from include_stubs.logging import get_custom_logger
-from include_stubs.utils import get_repo_from_input, run_command, get_default_branch_from_remote_repo
+from include_stubs.utils import print_exe_version, get_repo_from_input, run_command, get_default_branch_from_remote_repo
 
 PLUGIN_NAME = "include-stubs"
 ENTRY_POINT_NAME = "mkdocs"
 SUPPORTED_COMMANDS = ("build", "serve")
 ENV_VARIABLE_NAME = "MKDOCS_INCLUDE_STUBS_ADD_LOCAL_STUB"
+REQUIRED_EXES = ["git", "gh"]
 
 logger = get_custom_logger(PLUGIN_NAME)
 
@@ -197,6 +198,8 @@ def main():
     command = known_args.command
     default_mkdocs_arguments = get_default_mkdocs_arguments(command, unknown_args)
     default_mkdocs_arguments_list = " ".join(default_mkdocs_arguments)
+    for exe in REQUIRED_EXES:
+        print_exe_version(exe)
     if is_default_mkdocs_to_be_run(command, unknown_args, sys.argv[1]):
         # Run the default mkdocs command with the same arguments passed to this script
         logger.info(f"Running the command 'mkdocs {default_mkdocs_arguments_list}' using the default mkdocs executable.")
