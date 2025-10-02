@@ -4,10 +4,13 @@ dynamic = ["version"]
 authors = [
   {name = "Davide Marchegiani", email="davide.marchegiani@anu.edu.au"},
 ]
+maintainers = [
+    {name = "Davide Marchegiani", email="davide.marchegiani@anu.edu.au"},
+]
 description = "Mkdocs plugin to include stubs (single pages) from multiple GitHub branches of a repo within a mkdocs website build."
 license = { file = "LICENSE" }
 keywords = ["mkdocs", "plugin", "mkdocs plugin", "access-nri"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "beautifulsoup4>=4.13.4",
     "mkdocs>=1.6",
@@ -56,3 +59,6 @@ parentdir_prefix = "mkdocs-include-stubs-plugin-"
 pythonpath = "src"
 testpaths = ["tests/"]
 addopts = "--cov=src --cov-report=term-missing"
+
+[tool.wheel]
+universal = true
