@@ -97,7 +97,7 @@ def get_plugin_config(config_path=None) -> dict | None:
     return None
 
 
-def is_default_mkdocs_to_be_run(command: str, other_args: list, first_arg: str) -> bool:
+def is_default_mkdocs_to_be_run(command: str, other_args: list) -> bool:
     """
     Check if the default mkdocs command should be run.
 
@@ -106,16 +106,9 @@ def is_default_mkdocs_to_be_run(command: str, other_args: list, first_arg: str) 
             The command passed to the CLI.
         other_args: Str
             The other passed CLI arguments.
-        first_arg: Str
-            The first passed CLI argument.
     Returns:
         True if the default mkdocs command should be run, False otherwise.
     """
-    if first_arg == "--":
-        logger.info(
-            "'--' passed as the first argument."
-        )
-        return True
     if command not in SUPPORTED_COMMANDS:
         logger.info(
             f"No command among {SUPPORTED_COMMANDS} passed."
@@ -194,46 +187,54 @@ def main():
     """
     Main function to run the CLI.
     """
-    known_args, unknown_args = parse_args()
-    command = known_args.command
-    default_mkdocs_arguments = get_default_mkdocs_arguments(command, unknown_args)
-    default_mkdocs_arguments_list = " ".join(default_mkdocs_arguments)
-    for exe in REQUIRED_EXES:
-        print_exe_version(exe)
-    if is_default_mkdocs_to_be_run(command, unknown_args, sys.argv[1]):
-        # Run the default mkdocs command with the same arguments passed to this script
-        logger.info(f"Running the command 'mkdocs {default_mkdocs_arguments_list}' using the default mkdocs executable.")
-        run_default_mkdocs_command(default_mkdocs_arguments)
+    # If the first argument is '--', run the default mkdocs command 
+    # with the same arguments passed to this script (without this first '--' argument)
+    if sys.argv[1] == "--":
+        logger.info(
+            "'--' passed as the first argument. Running the default mkdocs command")
+        run_default_mkdocs_command(sys.argv[2:])
     else:
-        # Shallow clone the repository branch
-        repo = get_repo_from_input(known_args.repo)
-        branch = known_args.branch or get_default_branch_from_remote_repo(repo)
-        logger.warning(
-            "'mkdocs.yml' not found locally. The site will be built using the 'mkdocs.yml' "
-            f"file and other contents from the {branch!r} branch of the {repo!r} GitHub repository."
-        )
-        with TemporaryDirectory(
-            prefix=f"{PLUGIN_NAME}_temp_build_dir_",
-            dir=os.getcwd(),
-            ignore_cleanup_errors=True,
-        ) as temp_dir:
-            command = get_git_clone_command(repo, branch, temp_dir)
-            run_command(command)
-            # Get mkdocs configuration
-            mkdocs_yaml_path = get_mkdocs_yaml_path(temp_dir)
-            # Get the plugin configuration
-            plugin_config = get_plugin_config(mkdocs_yaml_path)
-            # If the plugin configuration is not found, run the default mkdocs command
-            if not plugin_config:
-                logger.warning(
-                    "The 'include-stubs' plugin is not included in the 'mkdocs.yml' config file. "
-                    f"Falling back to the default mkdocs command: 'mkdocs {default_mkdocs_arguments_list}'."
-                )
-                run_default_mkdocs_command(default_mkdocs_arguments)
-            else:
-                # Run the default mkdocs command with the mkdocs config and contents from
-                # the specified repo and branch
-                default_mkdocs_arguments.extend(["-f", mkdocs_yaml_path])
-                os.environ[ENV_VARIABLE_NAME] = '1'
-                run_default_mkdocs_command(default_mkdocs_arguments)
-                
+        # Parse command-line arguments
+        known_args, unknown_args = parse_args()
+        command = known_args.command
+        default_mkdocs_arguments = get_default_mkdocs_arguments(command, unknown_args)
+        default_mkdocs_arguments_list = " ".join(default_mkdocs_arguments)
+        for exe in REQUIRED_EXES:
+            print_exe_version(exe)
+        if is_default_mkdocs_to_be_run(command, unknown_args):
+            # Run the default mkdocs command with the same arguments passed to this script
+            logger.info(f"Running the command 'mkdocs {default_mkdocs_arguments_list}' using the default mkdocs executable.")
+            run_default_mkdocs_command(default_mkdocs_arguments)
+        else:
+            # Shallow clone the repository branch
+            repo = get_repo_from_input(known_args.repo)
+            branch = known_args.branch or get_default_branch_from_remote_repo(repo)
+            logger.warning(
+                "'mkdocs.yml' not found locally. The site will be built using the 'mkdocs.yml' "
+                f"file and other contents from the {branch!r} branch of the {repo!r} GitHub repository."
+            )
+            with TemporaryDirectory(
+                prefix=f"{PLUGIN_NAME}_temp_build_dir_",
+                dir=os.getcwd(),
+                ignore_cleanup_errors=True,
+            ) as temp_dir:
+                command = get_git_clone_command(repo, branch, temp_dir)
+                run_command(command)
+                # Get mkdocs configuration
+                mkdocs_yaml_path = get_mkdocs_yaml_path(temp_dir)
+                # Get the plugin configuration
+                plugin_config = get_plugin_config(mkdocs_yaml_path)
+                # If the plugin configuration is not found, run the default mkdocs command
+                if not plugin_config:
+                    logger.warning(
+                        "The 'include-stubs' plugin is not included in the 'mkdocs.yml' config file. "
+                        f"Falling back to the default mkdocs command: 'mkdocs {default_mkdocs_arguments_list}'."
+                    )
+                    run_default_mkdocs_command(default_mkdocs_arguments)
+                else:
+                    # Run the default mkdocs command with the mkdocs config and contents from
+                    # the specified repo and branch
+                    default_mkdocs_arguments.extend(["-f", mkdocs_yaml_path])
+                    os.environ[ENV_VARIABLE_NAME] = '1'
+                    run_default_mkdocs_command(default_mkdocs_arguments)
+                    

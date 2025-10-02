@@ -144,7 +144,7 @@ def test_is_default_mkdocs_to_be_run_wrong_command(
     with patch(
         "include_stubs.cli.os.path.exists", return_value=mkdocs_exists
     ):
-        assert is_default_mkdocs_to_be_run(command, other_args, "some_arg") == expected_output
+        assert is_default_mkdocs_to_be_run(command, other_args) == expected_output
 
 
 @pytest.mark.parametrize(
@@ -183,7 +183,7 @@ def test_is_default_mkdocs_to_be_run_good_command_f_option(
     with patch(
         "include_stubs.cli.os.path.exists", return_value=mkdocs_exists
     ):
-        assert is_default_mkdocs_to_be_run(command, other_args, "some_arg") == expected_output
+        assert is_default_mkdocs_to_be_run(command, other_args) == expected_output
 
 
 @pytest.mark.parametrize(
@@ -209,34 +209,7 @@ def test_is_default_mkdocs_to_be_run_good_command_no_f_option(
     with patch(
         "include_stubs.cli.os.path.exists", return_value=mkdocs_exists
     ):
-        assert is_default_mkdocs_to_be_run(command, other_args, "some_arg") == mkdocs_exists
-
-
-@pytest.mark.parametrize(
-    "command",
-    ["serve", "build", "", "other-command"],
-    ids=[
-        "serve_command", "build_command", "empty_command", "other_command",
-    ],
-)
-@pytest.mark.parametrize(
-    "other_args",
-    ["-f bubbi other-arg", "", "random args --hello"],
-    ids=["f_option", "empty_other_args", "random_other_args"],
-)
-@patch("include_stubs.cli.get_mkdocs_yaml_path")
-@patch("include_stubs.cli.sys.argv")
-def test_is_default_mkdocs_to_be_run_double_dash_first_arg(
-    mock_sys_argv, mock_get_mkdocs_yaml_path, command, other_args
-):
-    """
-    Test the is_default_mkdocs_to_be_run function when the command passed is 'serve' or 'build'
-    and the '-f' or '--config-file' option is not passed.
-    """
-    expected_output = True
-    first_arg = "--"
-    assert is_default_mkdocs_to_be_run(command, other_args, first_arg) == expected_output
-
+        assert is_default_mkdocs_to_be_run(command, other_args) == mkdocs_exists
 
 @pytest.mark.parametrize(
     "args, expected_command, expected_repo, expected_branch, expected_unknown_args",
@@ -480,4 +453,15 @@ def test_main(
         else:
             unknown_args.extend(['-f', mock_get_mkdocs_yaml_path.return_value])
             mock_run_default_mkdocs_command.assert_called_once_with(unknown_args)
-            
+
+
+@patch("include_stubs.cli.run_default_mkdocs_command")
+@patch("include_stubs.cli.sys.argv", ["entry_point", "--", "other", "args"])
+def test_main_double_dash_first_arg(
+    mock_run_default_mkdocs_command,
+):
+    """
+    Test the main function when the first argument passed is a double dash ('--').
+    """
+    main()
+    mock_run_default_mkdocs_command.assert_called_once_with(["other", "args"])
