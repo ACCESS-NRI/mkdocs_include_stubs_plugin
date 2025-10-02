@@ -1,5 +1,5 @@
 [project]
-name = "mkdocs-include-stubs-plugin"
+name = "mkdocs-include-stubs-plugin-test"
 dynamic = ["version"]
 authors = [
   {name = "Davide Marchegiani", email="davide.marchegiani@anu.edu.au"},

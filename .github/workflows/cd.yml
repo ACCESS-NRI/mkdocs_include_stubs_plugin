@@ -1,0 +1,11 @@
+on:
+  pull_request:
+
+jobs:
+  publish_python_package:
+    uses: access-nri/actions/.github/workflows/publish-python-package.yml@main
+    secrets: inherit
+    permissions:
+      actions: write
+    with:
+      conda-package: false
