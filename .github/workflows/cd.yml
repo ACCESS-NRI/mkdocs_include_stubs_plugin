@@ -148,6 +148,8 @@ jobs:
       
       # Delete newly created tag
       - name: Cleanup tag
+        # Don't delete the tag if the job that failed was the create-github-release job
+        if: ${{ needs.create-github-release.result != 'failure' }}
         run: |
           git push origin ':${{ github.ref }}'
           echo "A job in the current workflow failed. Tag '${{ github.ref }}' was deleted."
