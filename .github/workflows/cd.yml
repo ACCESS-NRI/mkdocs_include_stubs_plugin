@@ -1,0 +1,159 @@
+on:
+  push:
+    tags:
+      - '**'
+env:
+  RELEASE_TAG_REGEX: '^[0-9]+\.[0-9]+\.[0-9]+$'  # MAJOR.MINOR.PATCH format
+jobs:
+  check-release-tag:
+    name: Check release tag
+    runs-on: ubuntu-latest
+    outputs:
+      is_release_tag: ${{ steps.check-tag.outputs.is_release_tag }}
+    steps:
+      - name: Check tag
+        id: check-tag
+        run: |
+          is_release_tag=true
+          tag='${{ github.ref_name }}' # Always the tag name in `on: push: tags` events
+          if [[ ! "$tag" =~ '${{ env.RELEASE_TAG_REGEX }}' ]]; then
+            echo "::warning::The tag '$tag' was not recognised as a release tag, matching the regex '${{ env.RELEASE_TAG_REGEX }}'. Therefore, no release was created."
+            is_release_tag=false
+          fi
+          echo "is_release_tag=$is_release_tag" >> $GITHUB_OUTPUT
+
+  version-sanity-check:
+    name: Version sanity check
+    needs: [check-release-tag]
+    if: ${{ needs.check-release-tag.outputs.is_release_tag == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+      # Don't allow smaller new versions or jumping versions in the MAJOR.MINOR.PATCH format
+      - name: Version sanity check
+        run: |
+          # Get the previous release version tag
+          old_tag_name=$(git tag --list --sort=-version:refname | grep -E '${{ env.RELEASE_TAG_REGEX }}' | sed -n '2p')
+          # If found, compare with the new tag
+          if [ -z "$old_tag_name" ]; then
+            echo "No previous version found. Skipping version sanity check."
+            exit 0
+          fi
+          new_tag_name='${{ github.ref_name }}'
+          IFS=. read -r old_major old_minor old_patch <<< "$old_tag_name"
+          IFS=. read -r new_major new_minor new_patch <<< "$new_tag_name"
+          error_msg="Version tag inconsistent!\nVersion '$new_tag_name' cannot come after version '$new_tag_name' (latest released version)."
+          # Check MAJOR
+          # - New major version cannot be smaller than previous 
+          # - Major version can only be incremented by 1 at a time
+          if ((\
+            (new_major < old_major) \
+            || (new_major > old_major + 1) \
+          )); then
+            echo -e "$msg"
+            exit 1
+          fi
+          # Check MINOR
+          # - New minor version cannot be smaller than previous if major version is the same
+          # - New minor version can only be 0 if major version is incremented
+          # - New minor version can only be incremented by 1 at a time
+          if ((\
+            (new_major == old_major && new_minor < old_minor) \
+            || (new_major > old_major && new_minor != 0) \
+            || (new_minor > old_minor + 1) \
+          )); then
+            echo -e "$msg"
+            exit 1
+          fi
+          # Check PATCH
+          # - New patch version must be bigger than previous if minor version is same
+          # - New patch version can only be 0 if minor version is incremented
+          # - New patch version can only be incremented by 1 at a time
+          if ((\
+            (new_minor == old_minor && new_patch <= old_patch) \
+            || (new_minor > old_minor && new_patch != 0) \
+            || (new_patch > old_patch + 1) \
+          )); then
+            echo -e "$msg"
+            exit 1
+          fi
+  
+  get-package-name:
+    name: Get package name
+    runs-on: ubuntu-latest
+    outputs:
+      package-name: ${{ steps.get-package-name.outputs.package-name }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      
+      - name: Get name
+        id: get-package-name
+        run: |
+          echo "package-name=$(yq '.project.name' pyproject.toml)" >> $GITHUB_OUTPUT
+  
+  ci:
+    name: CI
+    needs: [check-release-tag]
+    if: ${{ needs.check-release-tag.outputs.is_release_tag == 'true' }}
+    uses: ./.github/workflows/ci.yml
+
+  publish_python_package:
+    uses: access-nri/actions/.github/workflows/publish-python-package.yml@main
+    needs: [ci, version-sanity-check]
+    secrets: inherit
+    permissions:
+      actions: write
+    with:
+      conda-package: false
+  
+  create-github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [get-package-name, publish_python_package]
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ needs.publish_python_package.outputs.artifact-name }}
+          path: my_artifact_dir
+
+      - name: Create Release
+        uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836 #v2.3.3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ needs.get-package-name.outputs.package-name }} ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            my_artifact_dir/*
+
+  # If any of the previous jobs failed or the workflow was cancelled, 
+  # delete the created tag and any created GitHub release
+  cleanup-on-failure:
+    name: Cleanup on failure
+    runs-on: ubuntu-latest
+    needs: [check-release-tag, create-github-release]
+    # Run this job if any of the previous jobs failed, or if the workflow was cancelled
+    if: ${{ (( always() && failure() ) || cancelled()) && (needs.check-release-tag.outputs.is_release_tag == 'true') }}
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      # Delete newly created tag
+      - name: Cleanup tag
+        run: |
+          git push origin ':${{ github.ref }}'
+          echo "A job in the current workflow failed. Tag '${{ github.ref }}' was deleted."
+      
+      # Delete newly created GitHub release
+      - name: Cleanup GitHub release
+        run: |
+           gh release delete '${{ github.ref_name }}' && echo "GitHub release was deleted." || echo "No GitHub release '${{ github.ref_name }}' to delete."
